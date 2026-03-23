@@ -1,6 +1,6 @@
 PREFIX ?= $(HOME)/.local
 
-.PHONY: install uninstall
+.PHONY: install uninstall test
 
 install:
 	install -d $(PREFIX)/bin
@@ -21,6 +21,9 @@ install:
 	install -m 644 lib/platform/sandbox-linux.sh $(PREFIX)/lib/jailrun/platform/sandbox-linux.sh
 	install -m 755 lib/shims/codex $(PREFIX)/lib/jailrun/shims/codex
 	install -m 755 lib/token.sh $(PREFIX)/lib/jailrun/token.sh
+
+test:
+	bats tests/
 
 uninstall:
 	rm -f $(PREFIX)/bin/jailrun
