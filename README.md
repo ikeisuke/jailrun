@@ -13,7 +13,7 @@ make install                        # ~/.local/bin にインストール
 make install PREFIX=/usr/local      # /usr/local/bin にインストール
 ```
 
-初回起動時に `~/.config/security-wrapper/config` が自動生成される。
+初回起動時に `~/.config/jailrun/config` が自動生成される。
 
 ## 使い方
 

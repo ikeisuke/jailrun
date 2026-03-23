@@ -12,6 +12,7 @@ install:
 	install -m 644 lib/aws.sh $(PREFIX)/lib/jailrun/aws.sh
 	install -m 644 lib/platform/keychain-darwin.sh $(PREFIX)/lib/jailrun/platform/keychain-darwin.sh
 	install -m 644 lib/platform/keychain-linux.sh $(PREFIX)/lib/jailrun/platform/keychain-linux.sh
+	install -m 644 lib/platform/git-worktree.sh $(PREFIX)/lib/jailrun/platform/git-worktree.sh
 	install -m 644 lib/platform/sandbox-darwin.sh $(PREFIX)/lib/jailrun/platform/sandbox-darwin.sh
 	install -m 644 lib/platform/sandbox-linux.sh $(PREFIX)/lib/jailrun/platform/sandbox-linux.sh
 	install -m 755 lib/token.sh $(PREFIX)/lib/jailrun/token.sh

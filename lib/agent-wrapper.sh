@@ -3,7 +3,7 @@
 # jailrun エントリポイントから source して使う
 # WRAPPER_NAME, JAILRUN_DIR, JAILRUN_LIB は呼び出し元で設定すること
 #
-# 設定: ~/.config/security-wrapper/config
+# 設定: ~/.config/jailrun/config
 # プロファイル指定: AGENT_AWS_PROFILE=dev jailrun <tool>
 
 set -euo pipefail

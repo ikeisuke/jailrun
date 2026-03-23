@@ -30,7 +30,7 @@ lib/
 ├── agent-wrapper.sh         # 共通ラッパーテンプレート（各ツール向け）
 └── token-rotate.sh          # GitHub PAT ローテーション
 
-~/.config/security-wrapper/
+~/.config/jailrun/
 └── config                   # マシン固有の設定（git 管理外、初回自動生成）
 ```
 
@@ -63,12 +63,12 @@ make install PREFIX=/usr/local      # /usr/local にインストール
 jailrun claude  # または codex, gemini, kiro-cli, kiro-cli-chat
 ```
 
-初回は `~/.config/security-wrapper/config` が自動生成され、設定を促して終了する。
+初回は `~/.config/jailrun/config` が自動生成され、設定を促して終了する。
 
 ### 3. 設定ファイルを編集
 
 ```bash
-vi ~/.config/security-wrapper/config
+vi ~/.config/jailrun/config
 ```
 
 ```bash

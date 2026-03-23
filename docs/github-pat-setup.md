@@ -98,7 +98,7 @@ sudo apt install libsecret-tools gnome-keyring    # Ubuntu/Debian
 
 ### 使用トークンの切り替え
 
-使用するトークンは `~/.config/security-wrapper/config` で切り替える:
+使用するトークンは `~/.config/jailrun/config` で切り替える:
 
 ```bash
 GH_KEYCHAIN_SERVICE="github:fine-grained-myorg"  # または github:classic

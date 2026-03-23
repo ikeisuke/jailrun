@@ -2,15 +2,22 @@
 # AI エージェント共通クレデンシャル分離ライブラリ
 # jailrun エントリポイントから source して使う
 #
-# 設定ファイル: ~/.config/security-wrapper/config
+# 設定ファイル: ~/.config/jailrun/config
 #
 # 提供する関数:
-#   credential_guard_exec <command> [args...] - クレデンシャル分離して exec
 #   credential_guard_sandbox_exec <command> [args...] - クレデンシャル分離 + OS sandbox して exec
 
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/security-wrapper"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/jailrun"
 CONFIG_FILE="$CONFIG_DIR/config"
 _WRAPPER_NAME="${WRAPPER_NAME:-jailrun}"
+
+# 旧ディレクトリからのマイグレーション
+_OLD_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/security-wrapper"
+if [[ ! -f "$CONFIG_FILE" && -f "$_OLD_CONFIG_DIR/config" ]]; then
+  mkdir -p "$CONFIG_DIR"
+  cp "$_OLD_CONFIG_DIR/config" "$CONFIG_FILE"
+  echo "[$_WRAPPER_NAME] config を移行しました: $_OLD_CONFIG_DIR → $CONFIG_DIR" >&2
+fi
 
 # ─── sandbox 検出・早期リターン ──────────────────────────
 if [[ "${_CREDENTIAL_GUARD_SANDBOXED:-}" == "1" ]]; then
@@ -32,6 +39,11 @@ CODEX_BIN=""
 KIRO_CLI_BIN=""
 KIRO_CLI_CHAT_BIN=""
 GEMINI_BIN=""
+
+# sandbox パス（config で追加可能）
+SANDBOX_EXTRA_DENY_READ=""
+SANDBOX_EXTRA_ALLOW_WRITE=""
+SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
 
 # ─── 設定ファイル読み込み ───────────────────────────────
 _auto_detect_bin() {
@@ -66,30 +78,43 @@ else
   }
 
   cat > "$CONFIG_FILE" <<CONF
-# AI エージェント セキュリティラッパー共通設定
-# このファイルは git 管理外（マシン固有の設定）
-# claude, codex, kiro-cli, gemini で共有される
+# jailrun 設定ファイル（マシン固有、git 管理外）
 
+# ─── AWS ───────────────────────────────────────────────
 # 許可する AWS プロファイル（スペース区切り）
 ALLOWED_AWS_PROFILES="default"
 
 # デフォルトで使う AWS プロファイル
 DEFAULT_AWS_PROFILE="default"
 
-# Keychain に保存した GitHub PAT の名前
-# github:fine-grained / github:classic
+# ─── GitHub ────────────────────────────────────────────
+# jailrun token で登録したトークン名
+# github:fine-grained-myorg / github:classic
 GH_KEYCHAIN_SERVICE="github:classic"
 
-# 各ツールの実体パス（自動検出済み、必要に応じて修正）
+# ─── バイナリパス ──────────────────────────────────────
+# 自動検出済み。必要に応じて修正
 CLAUDE_BIN="$(_detect_bin claude)"
 CODEX_BIN="$(_detect_bin codex)"
 KIRO_CLI_BIN="$(_detect_bin kiro-cli)"
 KIRO_CLI_CHAT_BIN="$(_detect_bin kiro-cli-chat)"
 GEMINI_BIN="$(_detect_bin gemini)"
+
+# ─── sandbox カスタマイズ ──────────────────────────────
+# 読み取り拒否パスを追加（スペース区切り）
+# デフォルト: ~/.aws ~/.ssh ~/.gnupg ~/.config/gh
+#SANDBOX_EXTRA_DENY_READ=""
+
+# 書き込み許可パスを追加（スペース区切り）
+# デフォルト: ~/.claude ~/.codex ~/.kiro ~/.gemini ~/.cache 等
+#SANDBOX_EXTRA_ALLOW_WRITE=""
+
+# 書き込み許可ファイルを追加（スペース区切り）
+#SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
 CONF
   unfunction _detect_bin
   echo "[$_WRAPPER_NAME] 作成しました: $CONFIG_FILE" >&2
-  echo "[$_WRAPPER_NAME] AWS プロファイル設定を確認してください: $CONFIG_FILE" >&2
+  echo "[$_WRAPPER_NAME] 設定を確認してください: $CONFIG_FILE" >&2
   exit 1
 fi
 
@@ -123,6 +148,10 @@ _SANDBOX_DENY_READ_PATHS=(
   "$HOME/.gnupg"
   "$HOME/.ssh"
 )
+# config から追加
+for _p in ${=SANDBOX_EXTRA_DENY_READ}; do
+  _SANDBOX_DENY_READ_PATHS+=("${_p/#\~/$HOME}")
+done
 
 _SANDBOX_ALLOW_WRITE_PATHS=(
   "$HOME/.claude"
@@ -137,10 +166,16 @@ _SANDBOX_ALLOW_WRITE_PATHS=(
   "$HOME/.config/codex"
   "$HOME/.config/kiro"
 )
+for _p in ${=SANDBOX_EXTRA_ALLOW_WRITE}; do
+  _SANDBOX_ALLOW_WRITE_PATHS+=("${_p/#\~/$HOME}")
+done
 
 _SANDBOX_ALLOW_WRITE_FILES=(
   "$HOME/.claude.json"
 )
+for _p in ${=SANDBOX_EXTRA_ALLOW_WRITE_FILES}; do
+  _SANDBOX_ALLOW_WRITE_FILES+=("${_p/#\~/$HOME}")
+done
 
 _sandbox_cmd=()
 
@@ -191,12 +226,6 @@ _schedule_cleanup() {
     \rm -rf "$_tmpdir"
   ) &
   disown
-}
-
-credential_guard_exec() {
-  _build_env_args
-  _schedule_cleanup
-  exec "${_env_args[@]}" "$@"
 }
 
 credential_guard_sandbox_exec() {

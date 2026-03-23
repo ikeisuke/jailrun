@@ -6,35 +6,11 @@
 #        $_SANDBOX_ALLOW_WRITE_FILES が設定済みであること
 # 出力: _setup_sandbox() 関数（_sandbox_cmd 配列を設定する）
 
+source "$JAILRUN_LIB/platform/git-worktree.sh"
+
 _setup_sandbox() {
   local _cwd="$PWD"
-  local _git_common_dir="" _git_parent_toplevel=""
-  local _other_worktrees=()
-
-  # git worktree 検出
-  if command -v git >/dev/null 2>&1; then
-    _git_common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || true
-    if [[ -n "$_git_common_dir" && "$_git_common_dir" != /* ]]; then
-      _git_common_dir="$_cwd/$_git_common_dir"
-    fi
-    if [[ -n "$_git_common_dir" && "$_git_common_dir" == "$_cwd"/* ]]; then
-      _git_common_dir=""
-    elif [[ -n "$_git_common_dir" ]]; then
-      _git_parent_toplevel="${_git_common_dir%/.git}"
-      local _wt_path=""
-      while IFS= read -r _line; do
-        case "$_line" in
-          worktree\ *) _wt_path="${_line#worktree }" ;;
-          "")
-            if [[ -n "$_wt_path" && "$_wt_path" != "$_cwd" && "$_wt_path" != "$_git_parent_toplevel" ]]; then
-              _other_worktrees+=("$_wt_path")
-            fi
-            _wt_path=""
-            ;;
-        esac
-      done < <(git worktree list --porcelain 2>/dev/null; echo)
-    fi
-  fi
+  _detect_git_worktree
 
   # Seatbelt プロファイル生成
   local _sb="$_tmpdir/sandbox.sb"
