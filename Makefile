@@ -5,9 +5,15 @@ PREFIX ?= $(HOME)/.local
 install:
 	install -d $(PREFIX)/bin
 	install -d $(PREFIX)/lib/jailrun
+	install -d $(PREFIX)/lib/jailrun/platform
 	install -m 755 bin/jailrun $(PREFIX)/bin/jailrun
 	install -m 644 lib/credential-guard.sh $(PREFIX)/lib/jailrun/credential-guard.sh
 	install -m 644 lib/agent-wrapper.sh $(PREFIX)/lib/jailrun/agent-wrapper.sh
+	install -m 644 lib/aws.sh $(PREFIX)/lib/jailrun/aws.sh
+	install -m 644 lib/platform/keychain-darwin.sh $(PREFIX)/lib/jailrun/platform/keychain-darwin.sh
+	install -m 644 lib/platform/keychain-linux.sh $(PREFIX)/lib/jailrun/platform/keychain-linux.sh
+	install -m 644 lib/platform/sandbox-darwin.sh $(PREFIX)/lib/jailrun/platform/sandbox-darwin.sh
+	install -m 644 lib/platform/sandbox-linux.sh $(PREFIX)/lib/jailrun/platform/sandbox-linux.sh
 	install -m 755 lib/token.sh $(PREFIX)/lib/jailrun/token.sh
 
 uninstall:
