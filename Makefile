@@ -9,6 +9,9 @@ install:
 	install -d $(PREFIX)/lib/jailrun/platform
 	install -m 755 bin/jailrun $(PREFIX)/bin/jailrun
 	install -m 644 lib/credential-guard.sh $(PREFIX)/lib/jailrun/credential-guard.sh
+	install -m 644 lib/config.sh $(PREFIX)/lib/jailrun/config.sh
+	install -m 644 lib/credentials.sh $(PREFIX)/lib/jailrun/credentials.sh
+	install -m 644 lib/sandbox.sh $(PREFIX)/lib/jailrun/sandbox.sh
 	install -m 644 lib/agent-wrapper.sh $(PREFIX)/lib/jailrun/agent-wrapper.sh
 	install -m 644 lib/aws.sh $(PREFIX)/lib/jailrun/aws.sh
 	install -m 644 lib/platform/keychain-darwin.sh $(PREFIX)/lib/jailrun/platform/keychain-darwin.sh

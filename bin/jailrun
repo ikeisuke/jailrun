@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/sh
 # jailrun - AI エージェント セキュリティラッパー
 # クレデンシャル分離 + OS サンドボックスで AI コーディングエージェントを起動する
 #
@@ -10,16 +10,28 @@
 #   AGENT_AWS_PROFILES=x   複数の AWS プロファイルをロード（スペース区切り）
 #   AGENT_SANDBOX_DEBUG=1  サンドボックスのデバッグモード
 
-set -euo pipefail
+set -eu
 
-export JAILRUN_DIR="${0:A:h}"
+# $0 の実体パスを解決（macOS は readlink -f がないため cd+pwd で代替）
+_resolve_path() {
+  _target="$1"
+  while [ -L "$_target" ]; do
+    _dir="$(cd "$(dirname "$_target")" && pwd)"
+    _target="$(readlink "$_target")"
+    case "$_target" in
+      /*) ;;
+      *) _target="$_dir/$_target" ;;
+    esac
+  done
+  (cd "$(dirname "$_target")" && pwd)
+}
+
+export JAILRUN_DIR="$(_resolve_path "$0")"
 # make install 後: /usr/local/lib/jailrun/  開発時: ../lib/
-_jailrun_lib="${JAILRUN_DIR}/../lib/jailrun"
-if [[ -d "$_jailrun_lib" ]]; then
-  export JAILRUN_LIB="${_jailrun_lib:A}"
+if [ -d "$JAILRUN_DIR/../lib/jailrun" ]; then
+  export JAILRUN_LIB="$(cd "$JAILRUN_DIR/../lib/jailrun" && pwd)"
 else
-  _jailrun_lib="${JAILRUN_DIR}/../lib"
-  export JAILRUN_LIB="${_jailrun_lib:A}"
+  export JAILRUN_LIB="$(cd "$JAILRUN_DIR/../lib" && pwd)"
 fi
 
 _subcmd="${1:-}"
@@ -28,10 +40,10 @@ shift 2>/dev/null || true
 case "$_subcmd" in
   claude|codex|gemini|kiro-cli|kiro-cli-chat)
     WRAPPER_NAME="$_subcmd"
-    source "$JAILRUN_LIB/agent-wrapper.sh"
+    . "$JAILRUN_LIB/agent-wrapper.sh"
     ;;
   token)
-    exec zsh "$JAILRUN_LIB/token.sh" "$@"
+    exec "$JAILRUN_LIB/token.sh" "$@"
     ;;
   --help|-h|"")
     cat <<'USAGE'
