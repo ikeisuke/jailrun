@@ -102,10 +102,9 @@ _cmd_add() {
   fi
 
   printf '[%s] Enter token: ' "$_name"
-  stty -echo
+  if [ -t 0 ]; then stty -echo; fi
   read _token
-  stty echo
-  echo
+  if [ -t 0 ]; then stty echo; echo; fi
 
   if [ -z "$_token" ]; then
     echo "[$_name] empty input, skipping"
@@ -207,31 +206,33 @@ _cmd_delete() {
 
 _cmd_list() {
   # List entries with jailrun: prefix from keychain
-  local _found=false
   case "$(uname)" in
     Darwin)
       # Extract jailrun: services from security dump-keychain
-      security dump-keychain 2>/dev/null | grep "\"svce\"<blob>=\"${_SERVICE_PREFIX}:" | while IFS= read -r _line; do
-        _svc=$(echo "$_line" | sed "s/.*\"svce\"<blob>=\"//;s/\".*//")
+      # Use temp file to avoid subshell variable scoping with pipe
+      _list_tmp=$(mktemp)
+      security dump-keychain 2>/dev/null | grep "\"svce\"<blob>=\"${_SERVICE_PREFIX}:" | sed "s/.*\"svce\"<blob>=\"//;s/\".*//" > "$_list_tmp"
+      _found=false
+      while IFS= read -r _svc; do
         _name="${_svc#${_SERVICE_PREFIX}:}"
         _token=$(_get_token "$_svc") || true
         if [ -n "$_token" ]; then
           _found=true
           printf '%s\t%s\n' "$_name" "$(_token_preview "$_token")"
         fi
-      done
+      done < "$_list_tmp"
+      rm -f "$_list_tmp"
+      if [ "$_found" = false ]; then
+        echo "no tokens registered"
+        echo "  use 'jailrun token add --name <name>' to add one"
+      fi
       ;;
     Linux)
       # secret-tool has no enumeration capability; check known names
       echo "[token list] on Linux, specify a known token name to check" >&2
       echo "  jailrun token rotate --name <name>" >&2
-      return
       ;;
   esac
-  if [ "$_found" = false ]; then
-    echo "no tokens registered"
-    echo "  use 'jailrun token add --name <name>' to add one"
-  fi
 }
 
 # --- Dispatch ---

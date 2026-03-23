@@ -21,7 +21,7 @@ _resolve_real_bin() {
   _OLD_IFS="$IFS"; IFS=":"
   for _d in $PATH; do
     case "$_d" in
-      */jailrun/shims) ;;
+      */jailrun/shims|*/lib/shims) ;;
       *) _clean_path="${_clean_path:+$_clean_path:}$_d" ;;
     esac
   done
@@ -40,17 +40,20 @@ _is_sandboxed() {
   return 1
 }
 
-# Disable Codex's built-in sandbox before exec
-# Unify under jailrun's Seatbelt/systemd-run sandbox
-_exec_codex() {
-  _resolve_real_bin
+# Rewrite Codex args and exec.
+# $1 = "direct" (exec binary) or "sandbox" (credential_guard_sandbox_exec)
+# $2 = binary path
+# $3.. = original arguments
+# Uses shift+set to preserve arguments containing newlines.
+_rewrite_and_exec_codex() {
+  _exec_mode="$1"; shift
+  _bin="$1"; shift
   _sandbox_inserted=false
   _skip_next=false
-  # Rebuild positional parameters as argument list
-  set -- "$@" "__SENTINEL__"
-  _result=""
-  for _arg do
-    [ "$_arg" = "__SENTINEL__" ] && break
+  _argc=$#
+  _i=0
+  while [ $_i -lt $_argc ]; do
+    _arg="$1"; shift; _i=$((_i + 1))
     if [ "$_skip_next" = true ]; then
       _skip_next=false
       continue
@@ -63,41 +66,32 @@ _exec_codex() {
         echo "[$WRAPPER_NAME] WARN: overriding sandbox to danger-full-access (prevent double sandbox)" >&2
         continue ;;
     esac
-    _result="${_result:+$_result
-}${_arg}"
+    set -- "$@" "$_arg"
     if [ "$_sandbox_inserted" = false ]; then
       case "$_arg" in
         exec|e)
-          _result="${_result}
--s
-danger-full-access"
+          set -- "$@" -s danger-full-access
           _sandbox_inserted=true ;;
         review)
-          _result="${_result}
--c
-sandbox_mode=\"danger-full-access\""
+          set -- "$@" -c 'sandbox_mode="danger-full-access"'
           _sandbox_inserted=true ;;
       esac
     fi
   done
-  # Restore _result from newline-separated to positional parameters
-  set --
-  _OLD_IFS="$IFS"; IFS="
-"
-  for _line in $_result; do
-    set -- "$@" "$_line"
-  done
-  IFS="$_OLD_IFS"
-  [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$WRAPPER_NAME] exec: $REAL_BIN $*" >&2
-  exec "$REAL_BIN" "$@"
+  [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$WRAPPER_NAME] exec: $_bin $*" >&2
+  if [ "$_exec_mode" = "direct" ]; then
+    exec "$_bin" "$@"
+  else
+    credential_guard_sandbox_exec "$_bin" "$@"
+  fi
 }
 
 # Already sandboxed -> exec real binary directly (credentials already isolated)
 if _is_sandboxed; then
+  _resolve_real_bin
   case "$WRAPPER_NAME" in
-    codex) _exec_codex "$@" ;;
+    codex) _rewrite_and_exec_codex direct "$REAL_BIN" "$@" ;;
     *)
-      _resolve_real_bin
       [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$WRAPPER_NAME] exec: $REAL_BIN $*" >&2
       exec "$REAL_BIN" "$@"
       ;;
@@ -109,48 +103,7 @@ _resolve_real_bin
 
 case "$WRAPPER_NAME" in
   codex)
-    # Rewrite arguments before passing to credential_guard_sandbox_exec
-    _sandbox_inserted=false
-    _skip_next=false
-    _new_args=""
-    for _arg in "$@"; do
-      if [ "$_skip_next" = true ]; then
-        _skip_next=false
-        continue
-      fi
-      case "$_arg" in
-        -s|--sandbox)
-          echo "[$WRAPPER_NAME] WARN: overriding sandbox to danger-full-access (prevent double sandbox)" >&2
-          _skip_next=true; continue ;;
-        --sandbox=*)
-          echo "[$WRAPPER_NAME] WARN: overriding sandbox to danger-full-access (prevent double sandbox)" >&2
-          continue ;;
-      esac
-      _new_args="${_new_args:+$_new_args
-}${_arg}"
-      if [ "$_sandbox_inserted" = false ]; then
-        case "$_arg" in
-          exec|e)
-            _new_args="${_new_args}
--s
-danger-full-access"
-            _sandbox_inserted=true ;;
-          review)
-            _new_args="${_new_args}
--c
-sandbox_mode=\"danger-full-access\""
-            _sandbox_inserted=true ;;
-        esac
-      fi
-    done
-    set --
-    _OLD_IFS="$IFS"; IFS="
-"
-    for _line in $_new_args; do
-      set -- "$@" "$_line"
-    done
-    IFS="$_OLD_IFS"
-    credential_guard_sandbox_exec "$REAL_BIN" "$@"
+    _rewrite_and_exec_codex sandbox "$REAL_BIN" "$@"
     ;;
   *)
     credential_guard_sandbox_exec "$REAL_BIN" "$@"
