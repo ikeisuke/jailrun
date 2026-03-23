@@ -9,8 +9,8 @@ Claude Code, Codex, Gemini CLI, Kiro CLI
 ## インストール
 
 ```bash
-make install           # /usr/local/bin にインストール
-make install PREFIX=~  # ~/bin にインストール
+make install                        # ~/.local/bin にインストール
+make install PREFIX=/usr/local      # /usr/local/bin にインストール
 ```
 
 初回起動時に `~/.config/security-wrapper/config` が自動生成される。

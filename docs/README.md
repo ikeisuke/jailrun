@@ -53,8 +53,8 @@ lib/
 ### 1. インストール
 
 ```bash
-make install           # /usr/local にインストール
-make install PREFIX=~  # ~/bin, ~/lib にインストール
+make install                        # ~/.local にインストール
+make install PREFIX=/usr/local      # /usr/local にインストール
 ```
 
 ### 2. 初回起動
