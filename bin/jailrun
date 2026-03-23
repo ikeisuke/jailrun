@@ -1,0 +1,65 @@
+#!/bin/zsh
+# jailrun - AI エージェント セキュリティラッパー
+# クレデンシャル分離 + OS サンドボックスで AI コーディングエージェントを起動する
+#
+# Usage: jailrun <command> [args...]
+# Commands: claude, codex, gemini, kiro-cli, kiro-cli-chat, token
+#
+# Environment:
+#   AGENT_AWS_PROFILE=x    AWS プロファイルを指定
+#   AGENT_AWS_PROFILES=x   複数の AWS プロファイルをロード（スペース区切り）
+#   AGENT_SANDBOX_DEBUG=1  サンドボックスのデバッグモード
+
+set -euo pipefail
+
+export JAILRUN_DIR="${0:A:h}"
+export JAILRUN_LIB="${JAILRUN_DIR}/../lib"
+
+_subcmd="${1:-}"
+shift 2>/dev/null || true
+
+case "$_subcmd" in
+  claude|codex|gemini|kiro-cli|kiro-cli-chat)
+    WRAPPER_NAME="$_subcmd"
+    source "$JAILRUN_LIB/agent-wrapper.sh"
+    ;;
+  token)
+    exec zsh "$JAILRUN_LIB/token.sh" "$@"
+    ;;
+  --help|-h|"")
+    cat <<'USAGE'
+Usage: jailrun <command> [args...]
+
+Commands:
+  claude              Claude Code をラップ起動
+  codex               Codex をラップ起動
+  gemini              Gemini CLI をラップ起動
+  kiro-cli            Kiro CLI をラップ起動
+  kiro-cli-chat       Kiro CLI Chat をラップ起動
+  token               トークン管理（add, rotate, delete, list）
+
+Environment:
+  AGENT_AWS_PROFILE=x    AWS プロファイルを指定
+  AGENT_AWS_PROFILES=x   複数の AWS プロファイルをロード（スペース区切り）
+  AGENT_SANDBOX_DEBUG=1  サンドボックスのデバッグモード
+
+Examples:
+  jailrun claude
+  jailrun codex exec "fix the bug"
+  AGENT_AWS_PROFILE=staging jailrun claude
+  jailrun token add --name github:classic
+  jailrun token rotate --name github:classic
+  jailrun token list
+USAGE
+    exit 0
+    ;;
+  --version|-v)
+    echo "jailrun 0.1.0"
+    exit 0
+    ;;
+  *)
+    echo "[jailrun] ERROR: unknown command '$_subcmd'" >&2
+    echo "Run 'jailrun --help' for usage" >&2
+    exit 1
+    ;;
+esac
