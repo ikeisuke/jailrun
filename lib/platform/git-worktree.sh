@@ -42,4 +42,5 @@ _detect_git_worktree() {
         ;;
     esac
   done < <(git worktree list --porcelain 2>/dev/null; echo)
+  return 0
 }

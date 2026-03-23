@@ -5,6 +5,7 @@ PREFIX ?= $(HOME)/.local
 install:
 	install -d $(PREFIX)/bin
 	install -d $(PREFIX)/lib/jailrun
+	install -d $(PREFIX)/lib/jailrun/shims
 	install -d $(PREFIX)/lib/jailrun/platform
 	install -m 755 bin/jailrun $(PREFIX)/bin/jailrun
 	install -m 644 lib/credential-guard.sh $(PREFIX)/lib/jailrun/credential-guard.sh
@@ -15,6 +16,7 @@ install:
 	install -m 644 lib/platform/git-worktree.sh $(PREFIX)/lib/jailrun/platform/git-worktree.sh
 	install -m 644 lib/platform/sandbox-darwin.sh $(PREFIX)/lib/jailrun/platform/sandbox-darwin.sh
 	install -m 644 lib/platform/sandbox-linux.sh $(PREFIX)/lib/jailrun/platform/sandbox-linux.sh
+	install -m 755 lib/shims/codex $(PREFIX)/lib/jailrun/shims/codex
 	install -m 755 lib/token.sh $(PREFIX)/lib/jailrun/token.sh
 
 uninstall:

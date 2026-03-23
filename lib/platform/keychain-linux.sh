@@ -14,4 +14,5 @@ _get_gh_token() {
   else
     echo "[$_WRAPPER_NAME] WARN: secret-tool 未インストール (sudo apt install libsecret-tools gnome-keyring)" >&2
   fi
+  return 0
 }

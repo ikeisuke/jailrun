@@ -51,9 +51,9 @@ _setup_aws_credentials() {
           _sk=$(echo "$_exported" | jq -r .SecretAccessKey)
           _st=$(echo "$_exported" | jq -r '.SessionToken // empty')
         else
-          _ak=$(echo "$_exported" | grep -o '"AccessKeyId"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-          _sk=$(echo "$_exported" | grep -o '"SecretAccessKey"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-          _st=$(echo "$_exported" | grep -o '"SessionToken"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+          _ak=$(echo "$_exported" | grep -o '"AccessKeyId"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || true)
+          _sk=$(echo "$_exported" | grep -o '"SecretAccessKey"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || true)
+          _st=$(echo "$_exported" | grep -o '"SessionToken"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || true)
         fi
 
         _region=$(aws configure get region --profile "$_profile" 2>/dev/null || echo "$_DEFAULT_REGION")

@@ -28,7 +28,16 @@ bin/
 lib/
 ├── credential-guard.sh      # 共通ライブラリ（クレデンシャル分離 + サンドボックス）
 ├── agent-wrapper.sh         # 共通ラッパーテンプレート（各ツール向け）
-└── token-rotate.sh          # GitHub PAT ローテーション
+├── aws.sh                   # AWS クレデンシャル分離
+├── token.sh                 # トークン管理（add, rotate, delete, list）
+├── shims/
+│   └── codex                # Codex 内蔵 sandbox 無効化 shim
+└── platform/
+    ├── keychain-darwin.sh   # macOS Keychain トークン取得
+    ├── keychain-linux.sh    # Linux GNOME Keyring トークン取得
+    ├── sandbox-darwin.sh    # macOS Seatbelt sandbox 構築
+    ├── sandbox-linux.sh     # Linux systemd-run sandbox 構築
+    └── git-worktree.sh      # git worktree 検出（共通）
 
 ~/.config/jailrun/
 └── config                   # マシン固有の設定（git 管理外、初回自動生成）
@@ -173,7 +182,9 @@ AGENT_AWS_PROFILE  →  AWS_PROFILE  →  config の DEFAULT_AWS_PROFILE
 ### Codex の内蔵 sandbox 対策
 
 Codex は自身で sandbox-exec を適用するため、ラッパーの Seatbelt と競合する。
-サブコマンドに応じて内蔵 sandbox を無効化:
+2つの経路で内蔵 sandbox を無効化:
+
+**1. `jailrun codex` 経由の起動**: `agent-wrapper.sh` がサブコマンドに応じて無効化:
 
 | サブコマンド | 方式 |
 |-------------|------|
@@ -182,6 +193,11 @@ Codex は自身で sandbox-exec を適用するため、ラッパーの Seatbelt
 
 ユーザーが `-s` / `--sandbox` を指定した場合は `danger-full-access` に強制上書きされ、
 警告が表示される（二重 sandbox 防止のため）。
+
+**2. sandbox 内からの間接呼び出し**（例: Claude → Codex）:
+`lib/shims/codex` が PATH に差し込まれ、エージェントが `codex` を呼んだ際に
+shim が先に解決される。shim は内蔵 sandbox を `danger-full-access` に上書きして
+実体に `exec` する。
 
 ## Claude Code 固有の保護
 

@@ -126,7 +126,7 @@ trap '\rm -rf "$_tmpdir"' EXIT
 
 # ─── AWS クレデンシャル ─────────────────────────────────
 source "$JAILRUN_LIB/aws.sh"
-_setup_aws_credentials
+_setup_aws_credentials || true
 
 # ─── GitHub トークン ────────────────────────────────────
 case "$(uname)" in
@@ -201,6 +201,7 @@ _build_env_args() {
     AWS_SHARED_CREDENTIALS_FILE="$_aws_creds"
     GH_CONFIG_DIR="$_tmpdir/gh"
     SSH_AUTH_SOCK=
+    PATH="$JAILRUN_LIB/shims:$PATH"
   )
   if [[ -n "$_gh_token" ]]; then
     _env_args+=(GH_TOKEN="$_gh_token")
