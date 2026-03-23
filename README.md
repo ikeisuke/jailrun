@@ -8,11 +8,9 @@ Claude Code, Codex, Gemini CLI, Kiro CLI
 
 ## インストール
 
-`bin/jailrun` に PATH を通す:
-
 ```bash
-# .zshrc に追加
-export PATH="/path/to/jailrun/bin:$PATH"
+make install           # /usr/local/bin にインストール
+make install PREFIX=~  # ~/bin にインストール
 ```
 
 初回起動時に `~/.config/security-wrapper/config` が自動生成される。

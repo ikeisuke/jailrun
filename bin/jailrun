@@ -13,7 +13,12 @@
 set -euo pipefail
 
 export JAILRUN_DIR="${0:A:h}"
-export JAILRUN_LIB="${JAILRUN_DIR}/../lib"
+# make install 後: /usr/local/lib/jailrun/  開発時: ../lib/
+if [[ -d "${JAILRUN_DIR}/../lib/jailrun" ]]; then
+  export JAILRUN_LIB="${JAILRUN_DIR}/../lib/jailrun"
+else
+  export JAILRUN_LIB="${JAILRUN_DIR}/../lib"
+fi
 
 _subcmd="${1:-}"
 shift 2>/dev/null || true

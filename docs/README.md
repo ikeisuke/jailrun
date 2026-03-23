@@ -50,17 +50,11 @@ lib/
 
 ## セットアップ
 
-### 1. PATH に追加
+### 1. インストール
 
 ```bash
-# .zshrc に追加
-export PATH="$HOME/repos/github.com/ikeisuke/jailrun/bin:$PATH"
-```
-
-または `bin/jailrun` を既に PATH が通っているディレクトリにシンボリックリンク:
-
-```bash
-ln -s /path/to/jailrun/bin/jailrun ~/bin/jailrun
+make install           # /usr/local にインストール
+make install PREFIX=~  # ~/bin, ~/lib にインストール
 ```
 
 ### 2. 初回起動
