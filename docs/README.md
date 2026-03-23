@@ -180,10 +180,8 @@ Additional paths can be added via `SANDBOX_EXTRA_DENY_READ` in config.
 ### Sandbox Detection (Nesting Prevention)
 
 When an agent calls another agent (e.g., Claude → Codex), double-sandboxing
-is prevented via two-stage detection:
-
-1. `_CREDENTIAL_GUARD_SANDBOXED=1` env var (for tools that inherit env)
-2. `~/.aws/config` readability test (for tools like Claude that don't inherit env)
+is prevented by the `_CREDENTIAL_GUARD_SANDBOXED=1` env var, which is set
+in the generated exec.sh and inherited by all child processes.
 
 ### Codex Built-in Sandbox
 
@@ -224,13 +222,16 @@ Block all tool execution if sandbox is not applied:
 "PreToolUse": [{
   "hooks": [{
     "type": "command",
-    "command": "if [ -r ~/.aws/config ]; then echo 'Sandbox not applied. Relaunch via jailrun claude' >&2; exit 2; fi"
+    "command": "if [ -r ~/.ssh ]; then echo 'Sandbox not applied. Relaunch via jailrun claude' >&2; exit 2; fi"
   }]
 }]
 ```
 
-- `~/.aws/config` readable → sandbox not applied → exit 2 (block)
-- `~/.aws/config` unreadable → sandbox applied → exit 0 (allow)
+- `~/.ssh` readable → sandbox not applied → exit 2 (block)
+- `~/.ssh` unreadable → sandbox applied → exit 0 (allow)
+
+> Alternatively, check the env var:
+> `[ "${_CREDENTIAL_GUARD_SANDBOXED:-}" != "1" ]`.
 
 ## Verification
 

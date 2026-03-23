@@ -1,149 +1,164 @@
-# GitHub Fine-grained PAT セットアップガイド
+# GitHub Fine-grained PAT Setup Guide
 
-AI エージェント（Claude Code, Codex, Kiro CLI, Gemini CLI）に渡す制限付き GitHub トークンの作成・保存手順。
-セキュリティラッパー（`lib/credential-guard.sh`）が Keychain からトークンを取得してエージェントに注入する。
-トークンの登録は `jailrun token add --name <name>` で行う。
+How to create and store a restricted GitHub token for AI agents
+(Claude Code, Codex, Kiro CLI, Gemini CLI).
 
-## なぜ必要か
+The security wrapper (`lib/credential-guard.sh`) retrieves tokens from
+the system keychain and injects them into the agent's environment.
+Register tokens with `jailrun token add --name <name>`.
 
-- `gh auth login` で取得したトークンは全権限を持つ
-- エンタープライズ管理者のトークンは特に危険（組織全体に影響）
-- Fine-grained PAT でリポジトリ・権限を最小限に絞る
+## Why
 
-## 1. Fine-grained PAT の作成
+- Tokens from `gh auth login` carry full permissions
+- Org Owners, Repo Admins, and other privileged accounts can cause
+  widespread damage if their tokens are leaked or misused
+- Fine-grained PATs let you restrict scope to specific repositories
+  and minimum permissions
 
-### GitHub.com の場合
+## Prerequisites
 
-1. https://github.com/settings/tokens?type=beta にアクセス
-2. **Generate new token** をクリック
-3. 以下を設定:
+### Linux / WSL2
 
-| 項目 | 設定 |
-|------|------|
-| Token name | `ai-agent` (用途がわかる名前) |
-| Expiration | 30 days（短めに設定、定期ローテーション） |
-| Resource owner | 個人アカウント |
-| Repository access | **Only select repositories**（必要なリポジトリだけ選択） |
-
-4. Permissions（必要最小限を選択）:
-
-| Permission | Level | 用途 |
-|-----------|-------|------|
-| Contents | Read and write | コード読み書き |
-| Pull requests | Read and write | PR 作成 |
-| Issues | Read-only | Issue 参照 |
-| Metadata | Read-only | 自動付与 |
-| Workflows | Read and write | `.github/workflows` の変更（※前提条件あり） |
-
-> **Workflows 権限の前提条件**: main ブランチにブランチ保護ルールを設定し、
-> 直接 push を禁止・PR 必須にすること。これにより、エージェントが CI 定義を
-> 変更する PR を作成できるが、main に直接マージはできない（Layer 3: サービス側制限）。
-
-**付けてはいけない Permission**:
-- Administration（リポジトリ設定変更、ブランチ削除）
-- Actions（ワークフロー実行・トリガー）
-- Organization administration
-- Members（メンバー管理）
-
-5. **Generate token** → トークンをコピー
-
-### GitHub Enterprise の場合
-
-エンタープライズ管理者は追加の注意が必要:
-
-- **Resource owner を個人アカウントにする**（Organization を選ばない）
-- Organization の PAT を作る場合は管理者権限が付与されないことを確認
-- Organization settings → Personal access tokens で Fine-grained PAT の利用を許可する必要がある場合あり
-- `admin:org`, `admin:enterprise` スコープは **絶対に付与しない**
-
-## 2. ブランチ保護ルールの設定（前提条件）
-
-Workflows 権限を PAT に付与する場合、対象リポジトリに以下のブランチ保護を設定する:
-
-1. リポジトリの **Settings → Branches → Add branch protection rule**
-2. Branch name pattern: `main`（または `master`）
-3. 以下を有効化:
-   - **Require a pull request before merging**
-   - **Require approvals**（1人以上の承認を推奨）
-   - **Do not allow bypassing the above settings**
-
-これにより、エージェントが `.github/workflows` を変更する PR を作成できるが、
-レビューなしに main へマージすることはできない。
-
-## 3. トークンを保存
-
-`jailrun token` コマンドで Keychain / GNOME Keyring に保存する（macOS / Linux 両対応）:
-
-```bash
-# Fine-grained PAT を保存（推奨、org ごとに分ける）
-jailrun token add --name github:fine-grained-myorg
-
-# Classic PAT を保存（全リポジトリアクセスが必要な場合）
-jailrun token add --name github:classic
-```
-
-トークン名は任意。Organization ごとに Fine-grained PAT を分けて管理できる:
-
-| トークン名 | 用途 |
-|-----------|------|
-| `github:fine-grained-myorg` | myorg の Fine-grained PAT（推奨） |
-| `github:fine-grained-personal` | 個人リポジトリの Fine-grained PAT |
-| `github:classic` | Classic PAT（全リポジトリ） |
-
-### Linux/WSL の前提条件
+Install `secret-tool` before registering tokens:
 
 ```bash
 sudo apt install libsecret-tools gnome-keyring    # Ubuntu/Debian
 ```
 
-### 使用トークンの切り替え
+If not installed, jailrun runs without GitHub PAT (a warning is shown).
 
-使用するトークンは `~/.config/jailrun/config` で切り替える:
+### Branch Protection (required for Workflows permission)
+
+If you plan to grant the **Workflows** permission to your PAT,
+set up branch protection on target repositories first:
+
+1. Repository **Settings > Branches > Add branch protection rule**
+2. Branch name pattern: `main` (or `master`)
+3. Enable:
+   - **Require a pull request before merging**
+   - **Require approvals** (at least 1 reviewer recommended)
+   - **Do not allow bypassing the above settings**
+
+This ensures the agent can create PRs that modify `.github/workflows`,
+but cannot merge to main without review.
+
+## 1. Create a Fine-grained PAT
+
+### GitHub.com
+
+1. Go to https://github.com/settings/tokens?type=beta
+2. Click **Generate new token**
+3. Configure:
+
+| Field | Value |
+|-------|-------|
+| Token name | `ai-agent` (or a descriptive name) |
+| Expiration | 30 days (short-lived, rotate regularly) |
+| Resource owner | The account or **Organization** that owns the target repos |
+| Repository access | **Only select repositories** (pick only what's needed) |
+
+> **Resource owner**: Select the Organization if the repos you need
+> belong to that org. The org may need to allow Fine-grained PATs
+> under **Organization settings > Personal access tokens**.
+
+4. Permissions (minimum required):
+
+| Permission | Level | Purpose |
+|-----------|-------|---------|
+| Contents | Read and write | Read/write code |
+| Pull requests | Read and write | Create PRs |
+| Issues | Read-only | Reference issues |
+| Metadata | Read-only | Auto-granted |
+| Workflows | Read and write | Modify `.github/workflows` (requires branch protection) |
+
+**Never grant these permissions**:
+- Administration (repo settings, branch deletion)
+- Actions (trigger/manage workflow runs)
+- Organization administration
+- Members (member management)
+
+5. **Generate token** and copy it
+
+### GitHub Enterprise
+
+Additional considerations:
+
+- If the Organization requires Fine-grained PAT approval, request it
+  from an org admin
+- Never grant `admin:org` or `admin:enterprise` scopes
+- Consider creating separate tokens per Organization to limit blast
+  radius
+
+## 2. Store the Token
+
+Use `jailrun token` to save to the system keychain (macOS Keychain /
+Linux GNOME Keyring):
 
 ```bash
-GH_KEYCHAIN_SERVICE="github:fine-grained-myorg"  # または github:classic
+# Fine-grained PAT (recommended, one per org)
+jailrun token add --name github:fine-grained-myorg
+
+# Classic PAT (when broad repo access is needed)
+jailrun token add --name github:classic
 ```
 
-### 登録済みトークンの確認
+Token names are arbitrary. Recommended naming by Organization:
+
+| Token name | Use case |
+|-----------|----------|
+| `github:fine-grained-myorg` | Fine-grained PAT for myorg (recommended) |
+| `github:fine-grained-personal` | Fine-grained PAT for personal repos |
+| `github:classic` | Classic PAT (all repos) |
+
+### Switch Active Token
+
+Set the active token in `~/.config/jailrun/config`:
+
+```bash
+GH_KEYCHAIN_SERVICE="github:fine-grained-myorg"  # or github:classic
+```
+
+### List Registered Tokens
 
 ```bash
 jailrun token list
 ```
 
-## 4. トークンのローテーション
+## 3. Token Rotation
 
-ローテーションコマンドで管理（macOS / Linux 両対応）:
+Rotate tokens regularly (every 30 days recommended):
 
 ```bash
-# 種類を指定してローテーション（有効期限も表示）
 jailrun token rotate --name github:classic
 jailrun token rotate --name github:fine-grained-myorg
 ```
 
-30 日ごとに GitHub で新しいトークンを生成し、更新する。
+Generate a new token on GitHub, then run the rotate command to update
+the keychain entry.
 
-## 5. 動作確認
+## 4. Verify
 
 ```bash
-# ラッパー経由で起動して確認
+# Launch via jailrun
 jailrun claude
 
-# エージェント内で以下を実行して確認
-# gh auth status → Fine-grained PAT が使われていることを確認
+# Inside the agent, run:
+# gh auth status → should show the Fine-grained PAT is active
 ```
 
-## トラブルシューティング
+## Troubleshooting
 
-### "WARN: GitHub PAT 未設定" と表示される
+### "WARN: GitHub PAT not configured"
 
-Keychain にトークンが保存されていない。手順 3 を実行する。
+No token stored in keychain. Follow step 2 above.
 
-### Permission denied エラー
+### Permission denied errors
 
-PAT の権限が足りない。GitHub で PAT を編集し、必要な Permission を追加する。
-ただし最小権限の原則を守り、必要なものだけ追加すること。
+The PAT lacks required permissions. Edit the PAT on GitHub and add
+the needed permission. Follow the principle of least privilege — only
+add what's necessary.
 
-### Organization のリポジトリにアクセスできない
+### Cannot access Organization repositories
 
-Fine-grained PAT の Resource owner が正しいか確認する。
-Organization が Fine-grained PAT を許可しているか、Organization の管理者に確認する。
+Check that the PAT's Resource owner is set to the correct Organization.
+Verify that the Organization allows Fine-grained PATs (ask an org admin).
