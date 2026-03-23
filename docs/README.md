@@ -1,267 +1,271 @@
-# AI エージェント セキュリティラッパー
+# AI Agent Security Wrapper
 
-AI コーディングエージェント（Claude Code, Codex, Kiro CLI, Gemini CLI）が
-ローカルのクレデンシャルを悪用することを防ぐ多層防御の仕組み。
+Protects AI coding agents (Claude Code, Codex, Kiro CLI, Gemini CLI) from
+abusing local credentials via multi-layered defense.
 
-## 問題
+## Problem
 
-エージェントはユーザーの端末で動くため、`~/.aws`, `~/.ssh`, `~/.config/gh` 等の
-クレデンシャルにフルアクセスできる。管理者権限のトークンが漏洩・悪用されるリスクがある。
+Agents run in the user's terminal with full access to `~/.aws`, `~/.ssh`,
+`~/.config/gh`, etc. Admin-level tokens can be leaked or misused.
 
-## アーキテクチャ
+## Architecture
 
 ```
-保護層                          仕組み                     回避可能性
+Layer                           Mechanism                  Bypassable?
 ────────────────────────────────────────────────────────────────────
-Layer 1: OS サンドボックス       Seatbelt / systemd-run     不可（カーネル強制）
-Layer 2: クレデンシャル分離      環境変数で一時認証を注入    不可（起動前に確定）
-Layer 3: サービス側制限          IAM Role / Fine-grained PAT 不可（サーバ側で拒否）
-Layer 4: ツール固有の設定        permissions.deny / hook 等  低〜中（AI の判断に依存）
+Layer 1: OS sandbox             Seatbelt / systemd-run     No (kernel-enforced)
+Layer 2: Credential isolation   Temp credentials via env   No (set before exec)
+Layer 3: Service-side limits    IAM Role / Fine-grained PAT No (server-side)
+Layer 4: Tool-specific config   permissions.deny / hooks   Low-Med (AI judgment)
 ```
 
-## ファイル構成
+## File Structure
 
 ```
 bin/
-└── jailrun                  # エントリポイント（サブコマンドディスパッチ）
+└── jailrun                  # entrypoint (subcommand dispatch)
 
 lib/
-├── credential-guard.sh      # 共通ライブラリ（クレデンシャル分離 + サンドボックス）
-├── agent-wrapper.sh         # 共通ラッパーテンプレート（各ツール向け）
-├── aws.sh                   # AWS クレデンシャル分離
-├── token.sh                 # トークン管理（add, rotate, delete, list）
+├── credential-guard.sh      # orchestrator (sources config/credentials/sandbox)
+├── config.sh                # config loading, validation, migration
+├── credentials.sh           # temp dir, AWS credential extraction, GitHub token
+├── sandbox.sh               # sandbox path lists, exec script generation
+├── agent-wrapper.sh         # common wrapper (binary resolution, codex arg rewrite)
+├── aws.sh                   # AWS credential isolation
+├── token.sh                 # token management (add, rotate, delete, list)
 ├── shims/
-│   └── codex                # Codex 内蔵 sandbox 無効化 shim
+│   └── codex                # delegates to `jailrun codex` inside sandbox
 └── platform/
-    ├── keychain-darwin.sh   # macOS Keychain トークン取得
-    ├── keychain-linux.sh    # Linux GNOME Keyring トークン取得
-    ├── sandbox-darwin.sh    # macOS Seatbelt sandbox 構築
-    ├── sandbox-linux.sh     # Linux systemd-run sandbox 構築
-    └── git-worktree.sh      # git worktree 検出（共通）
+    ├── keychain-darwin.sh   # macOS Keychain token retrieval
+    ├── keychain-linux.sh    # Linux GNOME Keyring token retrieval
+    ├── sandbox-darwin.sh    # macOS Seatbelt sandbox profile generation
+    ├── sandbox-linux.sh     # Linux systemd-run property generation
+    └── git-worktree.sh      # git worktree detection (shared)
 
 ~/.config/jailrun/
-└── config                   # マシン固有の設定（git 管理外、初回自動生成）
+└── config                   # machine-specific config (not tracked, auto-generated)
 ```
 
-## 各ツールの保護レベル
+## Pipeline
 
-| 保護 | Claude Code | Codex | Kiro CLI | Gemini CLI |
-|------|------------|-------|----------|------------|
-| クレデンシャル分離 | `credential_guard_sandbox_exec` | `credential_guard_sandbox_exec` | `credential_guard_sandbox_exec` | `credential_guard_sandbox_exec` |
-| OS サンドボックス | Seatbelt（※注） | Seatbelt / systemd-run | Seatbelt / systemd-run | Seatbelt / systemd-run |
-| 書き込み制限 | Seatbelt ホワイトリスト | Seatbelt / systemd-run | Seatbelt / systemd-run | Seatbelt / systemd-run |
-| permissions.deny | あり | なし | なし | なし |
-| PreToolUse hook | あり（sandbox 未適用時ブロック） | なし | なし | なし |
-| ネットワーク制限 | なし | 内蔵（デフォルト遮断） | なし | なし |
+```
+jailrun <agent>
+  → config.sh          load/generate ~/.config/jailrun/config
+  → credentials.sh     extract AWS creds + GitHub PAT into temp files
+  → sandbox.sh         build deny/allow path lists, generate exec.sh
+  → exec               sandbox-exec / systemd-run with isolated env
+```
 
-> **※注**: Claude Code は sandbox-exec 内で起動されるが、子プロセス（Bash ツール）に
-> sandbox が継承されない問題あり。`permissions.deny` と PreToolUse hook で補完している。
+## Protection Levels by Tool
 
-## セットアップ
+| Protection | Claude Code | Codex | Kiro CLI | Gemini CLI |
+|------------|------------|-------|----------|------------|
+| Credential isolation | Yes | Yes | Yes | Yes |
+| OS sandbox | Seatbelt (*) | Seatbelt / systemd-run | Seatbelt / systemd-run | Seatbelt / systemd-run |
+| Write restriction | Seatbelt whitelist | Seatbelt / systemd-run | Seatbelt / systemd-run | Seatbelt / systemd-run |
+| Network restriction | No | Built-in (blocked by default) | No | No |
 
-### 1. インストール
+> **(*) Claude Code note**: sandbox-exec wraps the Claude process, but child
+> processes (Bash tool) may not inherit the sandbox. Consider supplementing
+> with Claude Code's `permissions.deny` and `PreToolUse` hooks (user-configured,
+> not shipped by this repo).
+
+## Setup
+
+### 1. Install
 
 ```bash
-make install                        # ~/.local にインストール
-make install PREFIX=/usr/local      # /usr/local にインストール
+make install                        # installs to ~/.local
+make install PREFIX=/usr/local      # installs to /usr/local
 ```
 
-### 2. 初回起動
+### 2. First run
 
 ```bash
-jailrun claude  # または codex, gemini, kiro-cli, kiro-cli-chat
+jailrun claude  # or codex, gemini, kiro-cli, kiro-cli-chat
 ```
 
-初回は `~/.config/jailrun/config` が自動生成され、設定を促して終了する。
+On first run, `~/.config/jailrun/config` is auto-generated and the process
+exits, prompting you to review the config.
 
-### 3. 設定ファイルを編集
+### 3. Edit config
 
 ```bash
 vi ~/.config/jailrun/config
 ```
 
 ```bash
-# 許可する AWS プロファイル（スペース区切り）
+# allowed AWS profiles (space-separated)
 ALLOWED_AWS_PROFILES="dev staging"
 
-# デフォルトプロファイル
+# default AWS profile
 DEFAULT_AWS_PROFILE="dev"
 
-# jailrun token で登録した名前（github:classic / github:fine-grained-myorg 等）
+# token name registered via `jailrun token`
 GH_KEYCHAIN_SERVICE="github:classic"
-
-# バイナリパスは自動検出済み（通常編集不要）
-CLAUDE_BIN="/opt/homebrew/bin/claude"
-CODEX_BIN="/opt/homebrew/bin/codex"
-KIRO_CLI_BIN="/Users/you/.local/bin/kiro-cli"
-KIRO_CLI_CHAT_BIN="/Users/you/.local/bin/kiro-cli-chat"
-GEMINI_BIN="/opt/homebrew/bin/gemini"
 ```
 
-### 4. GitHub PAT を設定
+Binary paths are resolved automatically via `command -v` with PATH cleaning
+(no manual configuration needed).
 
-[github-pat-setup.md](./github-pat-setup.md) を参照。
-Fine-grained と Classic の2種類を別々の Keychain サービス名で保持できる。
+### 4. Set up GitHub PAT
 
-### 5. Linux/WSL2 の場合
+See [github-pat-setup.md](./github-pat-setup.md).
+Fine-grained and Classic PATs can be stored under separate Keychain service names.
 
-systemd-run を利用（systemd 環境なら追加インストール不要）:
+### 5. Linux/WSL2
+
+Uses systemd-run (no extra install if systemd is available):
 
 ```bash
-# WSL2 で systemd が有効か確認
+# check if systemd is active in WSL2
 systemctl --user status
 ```
 
-GitHub トークンは `secret-tool`（GNOME Keyring）で管理:
+GitHub tokens are managed via `secret-tool` (GNOME Keyring):
 
 ```bash
 sudo apt install libsecret-tools gnome-keyring    # Ubuntu/Debian
-
-# トークンを保存（echo -n でパイプし、制御文字混入を防止）
-echo -n "ghp_xxxx" | secret-tool store --label="GitHub PAT Classic" service ai-agent-gh-token-classic account "$USER"
-
-# 確認（xxd で制御文字が混入していないか確認）
-secret-tool lookup service ai-agent-gh-token-classic account "$USER" | xxd | head -1
+jailrun token add --name github:classic
 ```
 
-`secret-tool` 未インストールの場合は GitHub PAT なしで動作する（WARN 表示）。
-環境変数フォールバックは廃止済み — セキュアストアのみをサポート。
+If `secret-tool` is not installed, jailrun runs without GitHub PAT (WARN shown).
 
-## 使い方
+## Usage
 
 ```bash
-# 通常起動（設定済みプロファイルで保護される）
+# normal launch (protected with configured profile)
 jailrun claude
 jailrun codex
 jailrun kiro-cli
 jailrun gemini
 
-# 一時的に別の AWS プロファイルを使う（許可リスト内に限る）
+# use a different AWS profile temporarily (must be in allowlist)
 AGENT_AWS_PROFILE=staging jailrun claude
 
-# 複数プロファイルをロード（許可リスト内に限る）
+# load multiple profiles (must be in allowlist)
 AGENT_AWS_PROFILES="dev staging" jailrun claude
 
-# シェルの AWS_PROFILE を引き継ぐ
+# inherit shell's AWS_PROFILE
 AWS_PROFILE=dev jailrun claude
 ```
 
-### AWS プロファイルの優先順位
+### AWS Profile Priority
 
 ```
-AGENT_AWS_PROFILE  →  AWS_PROFILE  →  config の DEFAULT_AWS_PROFILE
-（最優先）            （シェルの設定）   （フォールバック）
+AGENT_AWS_PROFILE  →  AWS_PROFILE  →  DEFAULT_AWS_PROFILE in config
+(highest)             (shell env)      (fallback)
 ```
 
-## サンドボックスの保護
+## Sandbox Protection
 
-### 読み取り拒否パス
+### Read-Denied Paths
 
-以下のディレクトリはカーネルレベルで読み取りが拒否される:
+These directories are blocked at kernel level:
 
-| パス | 内容 | 備考 |
-|------|------|------|
-| `~/.aws` | AWS クレデンシャル、SSO キャッシュ、設定 | |
-| `~/.config/gh` | GitHub CLI トークン | |
-| `~/.gnupg` | GPG 秘密鍵 | |
-| `~/.ssh` | SSH 秘密鍵、known_hosts | |
+| Path | Contents |
+|------|----------|
+| `~/.aws` | AWS credentials, SSO cache, config |
+| `~/.config/gh` | GitHub CLI tokens |
+| `~/.gnupg` | GPG private keys |
+| `~/.ssh` | SSH private keys, known_hosts |
 
-> **SSH→HTTPS 変換**: git の SSH URL（`git@github.com:` / `ssh://git@github.com/`）は
-> `GIT_CONFIG` env 変数で HTTPS に自動変換され、`GIT_ASKPASS` 経由で `GH_TOKEN` を使って認証する。
-> これにより SSH 鍵なしで git 操作が可能。
-> Linux (systemd-run) では環境変数が自動継承されないため、`-E` フラグで明示的に渡す。
+Additional paths can be added via `SANDBOX_EXTRA_DENY_READ` in config.
 
-### sandbox 検出（ネスト防止）
+> **SSH→HTTPS conversion**: git SSH URLs (`git@github.com:` / `ssh://git@github.com/`)
+> are rewritten to HTTPS via `GIT_CONFIG` env vars, authenticated via `GIT_ASKPASS`
+> with `GH_TOKEN`. This allows git operations without SSH keys.
+> On Linux (systemd-run), env vars are passed explicitly via `-E` flags.
 
-エージェントが別のエージェントを呼ぶ場合（Claude → Codex 等）、二重 sandbox を防止する。
-検出は2段構え:
+### Sandbox Detection (Nesting Prevention)
 
-1. `_CREDENTIAL_GUARD_SANDBOXED=1` 環境変数（env を継承するツール向け）
-2. `~/.aws/config` の読み取り可否（Claude のように env を継承しないツール向け）
+When an agent calls another agent (e.g., Claude → Codex), double-sandboxing
+is prevented via two-stage detection:
 
-### Codex の内蔵 sandbox 対策
+1. `_CREDENTIAL_GUARD_SANDBOXED=1` env var (for tools that inherit env)
+2. `~/.aws/config` readability test (for tools like Claude that don't inherit env)
 
-Codex は自身で sandbox-exec を適用するため、ラッパーの Seatbelt と競合する。
-2つの経路で内蔵 sandbox を無効化:
+### Codex Built-in Sandbox
 
-**1. `jailrun codex` 経由の起動**: `agent-wrapper.sh` がサブコマンドに応じて無効化:
+Codex applies its own sandbox-exec, which conflicts with jailrun's Seatbelt.
+The built-in sandbox is disabled via two paths:
 
-| サブコマンド | 方式 |
-|-------------|------|
-| `exec` / `e` | `-s danger-full-access` をサブコマンド後に挿入 |
-| `review` | `-c 'sandbox_mode="danger-full-access"'` をサブコマンド後に挿入 |
+**1. Direct invocation** (`jailrun codex`): `agent-wrapper.sh` rewrites args:
 
-ユーザーが `-s` / `--sandbox` を指定した場合は `danger-full-access` に強制上書きされ、
-警告が表示される（二重 sandbox 防止のため）。
+| Subcommand | Method |
+|------------|--------|
+| `exec` / `e` | Inserts `-s danger-full-access` after subcommand |
+| `review` | Inserts `-c 'sandbox_mode="danger-full-access"'` after subcommand |
 
-**2. sandbox 内からの間接呼び出し**（例: Claude → Codex）:
-`lib/shims/codex` が PATH に差し込まれ、エージェントが `codex` を呼んだ際に
-shim が先に解決される。shim は内蔵 sandbox を `danger-full-access` に上書きして
-実体に `exec` する。
+User-provided `-s` / `--sandbox` is overwritten to `danger-full-access` with a warning.
 
-## Claude Code 固有の保護
+**2. Indirect invocation** (e.g., Claude → Codex from within sandbox):
+`lib/shims/codex` is injected into PATH. The shim simply runs `exec jailrun codex "$@"`,
+which re-enters the jailrun flow. The `_is_sandboxed` check detects the existing
+sandbox and skips re-sandboxing, while still rewriting Codex args.
+
+## Claude Code Supplementary Protection
+
+> **Note**: The following are **user-configured recommendations**, not shipped
+> by this repository. They supplement Layer 1-3 protections.
 
 ### permissions.deny / permissions.ask
 
-Claude Code の `settings.json` で設定:
+Configure in Claude Code's `settings.json`:
 
-- **deny**: `~/.aws`, `~/.ssh` の Read/Bash、`aws sso get-role-credentials` 等の直接実行
-- **ask**: `~/.aws`, `~/.config/gh` を含む Bash コマンド（確認ダイアログ）
+- **deny**: Read/Bash for `~/.aws`, `~/.ssh`; direct `aws sso get-role-credentials` etc.
+- **ask**: Bash commands containing `~/.aws`, `~/.config/gh` (confirmation dialog)
 
 ### PreToolUse hook
 
-sandbox 未適用で起動した場合、全ツール実行をブロック:
+Block all tool execution if sandbox is not applied:
 
 ```json
 "PreToolUse": [{
   "hooks": [{
     "type": "command",
-    "command": "if [ -r ~/.aws/config ]; then echo 'sandbox未適用です。jailrun claude から起動し直してください' >&2; exit 2; fi"
+    "command": "if [ -r ~/.aws/config ]; then echo 'Sandbox not applied. Relaunch via jailrun claude' >&2; exit 2; fi"
   }]
 }]
 ```
 
-- `~/.aws/config` が読める → sandbox 未適用 → exit 2 でブロック
-- `~/.aws/config` が読めない → sandbox 適用済み → exit 0 で許可
+- `~/.aws/config` readable → sandbox not applied → exit 2 (block)
+- `~/.aws/config` unreadable → sandbox applied → exit 0 (allow)
 
-## 動作確認
+## Verification
 
-エージェント内で以下を試して `Operation not permitted` が返れば成功:
+Inside the agent, try the following. `Operation not permitted` means success:
 
 ```
 cat ~/.aws/config
 ```
 
-Claude Code の場合は Read ツールでも確認:
-- `File is in a directory that is denied` → permissions.deny（ツールレベル）
-- `Operation not permitted` → sandbox（カーネルレベル）
+## Troubleshooting
 
-## トラブルシューティング
+### "AWS credential export failed"
 
-### "AWS プロファイルのクレデンシャル取得失敗"
-
-SSO セッションが切れている。再ログインする:
+SSO session expired. Re-login:
 
 ```bash
-aws sso login --profile <プロファイル名>
+aws sso login --profile <profile-name>
 ```
 
-### サンドボックスのデバッグ
+### Sandbox Debugging
 
-`AGENT_SANDBOX_DEBUG=1` で起動すると:
-- 書き込み制限を無効化する（読み取り拒否は有効のまま）
-- exec コマンドを stderr に表示
+Launch with `AGENT_SANDBOX_DEBUG=1` to:
+- Disable write restrictions (read denials remain active)
+- Print exec command to stderr
 
-`find -newer` と組み合わせてホワイトリスト外への書き込み先を特定する:
+Use `find -newer` to identify write targets outside the whitelist:
 
 ```bash
-# ターミナル1: マーカーを作成
+# Terminal 1: create marker
 touch /tmp/before-agent
 
-# ターミナル2: デバッグモードで起動して操作を再現
+# Terminal 2: launch in debug mode and reproduce
 AGENT_SANDBOX_DEBUG=1 jailrun claude
 
-# ターミナル1: 操作後に書き込み先を確認
+# Terminal 1: check write targets after operation
 find ~ -maxdepth 4 -newer /tmp/before-agent \
   -not -path '*/node_modules/*' \
   -not -path '*/.git/*' \
@@ -270,37 +274,24 @@ find ~ -maxdepth 4 -newer /tmp/before-agent \
   2>/dev/null | sort
 ```
 
-追加すべきパスを特定したら `lib/credential-guard.sh` の `_SANDBOX_ALLOW_WRITE_PATHS` / `_SANDBOX_ALLOW_WRITE_FILES` に追加する。
+Add discovered paths to `SANDBOX_EXTRA_ALLOW_WRITE` or
+`SANDBOX_EXTRA_ALLOW_WRITE_FILES` in `~/.config/jailrun/config`.
 
-### エージェントが起動しない・動作がおかしい
+### Agent won't start / behaves oddly
 
-サンドボックスの書き込み制限が原因の可能性がある。以下の手順で切り分ける:
+Sandbox write restrictions may be the cause. Isolate:
 
 ```bash
-# 1. 実体を直接起動して sandbox が原因か確認
+# 1. launch the binary directly to confirm sandbox is the cause
 /opt/homebrew/bin/claude
 
-# 2. 起動できたら sandbox が原因。書き込み先を特定する:
-touch /tmp/before-agent
-
-# 3. AGENT_SANDBOX_DEBUG=1 で起動して操作を再現
+# 2. if it works, use debug mode to find blocked writes
 AGENT_SANDBOX_DEBUG=1 jailrun claude
-
-# 4. 変更されたファイルを確認
-find ~ -maxdepth 4 -newer /tmp/before-agent \
-  -not -path '*/node_modules/*' \
-  -not -path '*/.git/*' \
-  -not -path '*/Library/Logs/*' \
-  -not -path '*/.claude/projects/*' \
-  2>/dev/null | sort
 ```
 
-特定できたパスを `lib/credential-guard.sh` の `_SANDBOX_ALLOW_WRITE_PATHS` または
-`_SANDBOX_ALLOW_WRITE_FILES` に追加する。
+### Bypass the wrapper
 
-### ラッパーをバイパスしたい
-
-jailrun を使わず、実体を直接呼ぶ:
+Call the binary directly:
 
 ```bash
 /opt/homebrew/bin/claude

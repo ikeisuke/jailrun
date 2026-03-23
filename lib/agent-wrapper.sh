@@ -1,21 +1,21 @@
 #!/bin/sh
-# AI エージェント共通ラッパー
-# jailrun エントリポイントから source して使う
-# WRAPPER_NAME, JAILRUN_DIR, JAILRUN_LIB は呼び出し元で設定すること
+# Common wrapper for AI agents
+# Sourced from the jailrun entry point
+# WRAPPER_NAME, JAILRUN_DIR, JAILRUN_LIB must be set by the caller
 #
-# 設定: ~/.config/jailrun/config
-# プロファイル指定: AGENT_AWS_PROFILE=dev jailrun <tool>
+# Config: ~/.config/jailrun/config
+# Profile override: AGENT_AWS_PROFILE=dev jailrun <tool>
 
 set -eu
 
-# WRAPPER_NAME は呼び出し元で設定すること
+# WRAPPER_NAME must be set by the caller
 if [ -z "${WRAPPER_NAME:-}" ]; then
-  echo "[jailrun] ERROR: WRAPPER_NAME が未設定です" >&2
+  echo "[jailrun] ERROR: WRAPPER_NAME is not set" >&2
   exit 1
 fi
 . "$JAILRUN_LIB/credential-guard.sh"
 
-# PATH から jailrun shims を除外してバイナリ実体を探す
+# Resolve the real binary by excluding jailrun shims from PATH
 _resolve_real_bin() {
   _clean_path=""
   _OLD_IFS="$IFS"; IFS=":"
@@ -28,25 +28,25 @@ _resolve_real_bin() {
   IFS="$_OLD_IFS"
   REAL_BIN=$(PATH="$_clean_path" command -v "$WRAPPER_NAME" 2>/dev/null) || true
   if [ -z "$REAL_BIN" ]; then
-    echo "[$WRAPPER_NAME] ERROR: 実体が見つかりません" >&2
+    echo "[$WRAPPER_NAME] ERROR: real binary not found" >&2
     exit 1
   fi
 }
 
-# sandbox 検出ヘルパー（env 変数 or ファイルアクセス）
+# Sandbox detection helper (env variable or file access)
 _is_sandboxed() {
   [ "${_CREDENTIAL_GUARD_SANDBOXED:-}" = "1" ] && return 0
   [ -f "$HOME/.aws/config" ] && ! test -r "$HOME/.aws/config" 2>/dev/null && return 0
   return 1
 }
 
-# Codex の内蔵 sandbox を無効化してから exec
-# jailrun の Seatbelt/systemd-run に統一するため
+# Disable Codex's built-in sandbox before exec
+# Unify under jailrun's Seatbelt/systemd-run sandbox
 _exec_codex() {
   _resolve_real_bin
   _sandbox_inserted=false
   _skip_next=false
-  # positional parameters を引数リストとして組み立て直す
+  # Rebuild positional parameters as argument list
   set -- "$@" "__SENTINEL__"
   _result=""
   for _arg do
@@ -57,10 +57,10 @@ _exec_codex() {
     fi
     case "$_arg" in
       -s|--sandbox)
-        echo "[$WRAPPER_NAME] WARN: sandbox 指定を danger-full-access に上書き（二重 sandbox 防止）" >&2
+        echo "[$WRAPPER_NAME] WARN: overriding sandbox to danger-full-access (prevent double sandbox)" >&2
         _skip_next=true; continue ;;
       --sandbox=*)
-        echo "[$WRAPPER_NAME] WARN: sandbox 指定を danger-full-access に上書き（二重 sandbox 防止）" >&2
+        echo "[$WRAPPER_NAME] WARN: overriding sandbox to danger-full-access (prevent double sandbox)" >&2
         continue ;;
     esac
     _result="${_result:+$_result
@@ -80,7 +80,7 @@ sandbox_mode=\"danger-full-access\""
       esac
     fi
   done
-  # _result を改行区切りから positional parameters に復元
+  # Restore _result from newline-separated to positional parameters
   set --
   _OLD_IFS="$IFS"; IFS="
 "
@@ -92,7 +92,7 @@ sandbox_mode=\"danger-full-access\""
   exec "$REAL_BIN" "$@"
 }
 
-# sandbox 済み → 実体を直接 exec（クレデンシャル分離済みのため再処理不要）
+# Already sandboxed -> exec real binary directly (credentials already isolated)
 if _is_sandboxed; then
   case "$WRAPPER_NAME" in
     codex) _exec_codex "$@" ;;
@@ -104,12 +104,12 @@ if _is_sandboxed; then
   esac
 fi
 
-# 通常起動: バイナリ解決 → credential 分離 + sandbox で exec
+# Normal startup: resolve binary -> credential isolation + sandbox exec
 _resolve_real_bin
 
 case "$WRAPPER_NAME" in
   codex)
-    # 引数を書き換えてから credential_guard_sandbox_exec に渡す
+    # Rewrite arguments before passing to credential_guard_sandbox_exec
     _sandbox_inserted=false
     _skip_next=false
     _new_args=""
@@ -120,10 +120,10 @@ case "$WRAPPER_NAME" in
       fi
       case "$_arg" in
         -s|--sandbox)
-          echo "[$WRAPPER_NAME] WARN: sandbox 指定を danger-full-access に上書き（二重 sandbox 防止）" >&2
+          echo "[$WRAPPER_NAME] WARN: overriding sandbox to danger-full-access (prevent double sandbox)" >&2
           _skip_next=true; continue ;;
         --sandbox=*)
-          echo "[$WRAPPER_NAME] WARN: sandbox 指定を danger-full-access に上書き（二重 sandbox 防止）" >&2
+          echo "[$WRAPPER_NAME] WARN: overriding sandbox to danger-full-access (prevent double sandbox)" >&2
           continue ;;
       esac
       _new_args="${_new_args:+$_new_args

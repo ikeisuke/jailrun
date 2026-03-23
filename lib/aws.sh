@@ -1,11 +1,11 @@
 #!/bin/sh
-# AWS クレデンシャル分離
-# credential-guard.sh から source される
+# AWS credential isolation
+# Sourced by credential-guard.sh
 #
-# 前提: $_tmpdir, $_WRAPPER_NAME, $DEFAULT_AWS_PROFILE,
-#        $ALLOWED_AWS_PROFILES, $_DEFAULT_REGION が設定済みであること
+# Requires: $_tmpdir, $_WRAPPER_NAME, $DEFAULT_AWS_PROFILE,
+#           $ALLOWED_AWS_PROFILES, $_DEFAULT_REGION to be set
 #
-# 出力: $_aws_config, $_aws_creds（一時ファイルのパス）
+# Outputs: $_aws_config, $_aws_creds (paths to temporary files)
 
 _aws_config="$_tmpdir/aws-config"
 _aws_creds="$_tmpdir/aws-credentials"
@@ -26,7 +26,7 @@ _write_aws_profile() {
 _setup_aws_credentials() {
   local _load_profiles="${AGENT_AWS_PROFILES:-$DEFAULT_AWS_PROFILE}"
 
-  # 許可リスト外のプロファイルを拒否
+  # Reject profiles not in the allow list
   if [ -n "$_load_profiles" ] && [ -n "$ALLOWED_AWS_PROFILES" ]; then
     local _filtered_profiles=""
     for _p in $_load_profiles; do
@@ -35,7 +35,7 @@ _setup_aws_credentials() {
           _filtered_profiles="${_filtered_profiles:+$_filtered_profiles }$_p"
           ;;
         *)
-          echo "[$_WRAPPER_NAME] WARN: AWS '$_p' は許可リストにありません (ALLOWED_AWS_PROFILES)" >&2
+          echo "[$_WRAPPER_NAME] WARN: AWS profile '$_p' is not in the allow list (ALLOWED_AWS_PROFILES)" >&2
           ;;
       esac
     done
@@ -71,9 +71,9 @@ _setup_aws_credentials() {
         fi
 
         _write_aws_profile "profile $_profile" "$_profile" "$_ak" "$_sk" "$_st" "$_region"
-        echo "[$_WRAPPER_NAME] AWS: $_profile (一時クレデンシャル)" >&2
+        echo "[$_WRAPPER_NAME] AWS: $_profile (temporary credentials)" >&2
       else
-        echo "[$_WRAPPER_NAME] WARN: AWS '$_profile' のクレデンシャル取得失敗（aws sso login が必要？）" >&2
+        echo "[$_WRAPPER_NAME] WARN: failed to retrieve credentials for AWS profile '$_profile' (need aws sso login?)" >&2
       fi
     done
 

@@ -1,18 +1,18 @@
 #!/bin/sh
-# jailrun - AI エージェント セキュリティラッパー
-# クレデンシャル分離 + OS サンドボックスで AI コーディングエージェントを起動する
+# jailrun - AI agent security wrapper
+# Launch AI coding agents with credential isolation + OS sandbox
 #
 # Usage: jailrun <command> [args...]
 # Commands: claude, codex, gemini, kiro-cli, kiro-cli-chat, token
 #
 # Environment:
-#   AGENT_AWS_PROFILE=x    AWS プロファイルを指定
-#   AGENT_AWS_PROFILES=x   複数の AWS プロファイルをロード（スペース区切り）
-#   AGENT_SANDBOX_DEBUG=1  サンドボックスのデバッグモード
+#   AGENT_AWS_PROFILE=x    specify AWS profile
+#   AGENT_AWS_PROFILES=x   load multiple AWS profiles (space-separated)
+#   AGENT_SANDBOX_DEBUG=1  sandbox debug mode
 
 set -eu
 
-# $0 の実体パスを解決（macOS は readlink -f がないため cd+pwd で代替）
+# resolve real path of $0 (macOS lacks readlink -f, use cd+pwd)
 _resolve_path() {
   _target="$1"
   while [ -L "$_target" ]; do
@@ -27,7 +27,7 @@ _resolve_path() {
 }
 
 export JAILRUN_DIR="$(_resolve_path "$0")"
-# make install 後: /usr/local/lib/jailrun/  開発時: ../lib/
+# after make install: /usr/local/lib/jailrun/  dev: ../lib/
 if [ -d "$JAILRUN_DIR/../lib/jailrun" ]; then
   export JAILRUN_LIB="$(cd "$JAILRUN_DIR/../lib/jailrun" && pwd)"
 else
@@ -50,17 +50,17 @@ case "$_subcmd" in
 Usage: jailrun <command> [args...]
 
 Commands:
-  claude              Claude Code をラップ起動
-  codex               Codex をラップ起動
-  gemini              Gemini CLI をラップ起動
-  kiro-cli            Kiro CLI をラップ起動
-  kiro-cli-chat       Kiro CLI Chat をラップ起動
-  token               トークン管理（add, rotate, delete, list）
+  claude              launch Claude Code
+  codex               launch Codex
+  gemini              launch Gemini CLI
+  kiro-cli            launch Kiro CLI
+  kiro-cli-chat       launch Kiro CLI Chat
+  token               token management (add, rotate, delete, list)
 
 Environment:
-  AGENT_AWS_PROFILE=x    AWS プロファイルを指定
-  AGENT_AWS_PROFILES=x   複数の AWS プロファイルをロード（スペース区切り）
-  AGENT_SANDBOX_DEBUG=1  サンドボックスのデバッグモード
+  AGENT_AWS_PROFILE=x    specify AWS profile
+  AGENT_AWS_PROFILES=x   load multiple AWS profiles (space-separated)
+  AGENT_SANDBOX_DEBUG=1  sandbox debug mode
 
 Examples:
   jailrun claude

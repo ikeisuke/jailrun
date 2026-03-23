@@ -1,10 +1,10 @@
 #!/bin/sh
-# トークン管理（macOS Keychain / Linux GNOME Keyring）
+# Token management (macOS Keychain / Linux GNOME Keyring)
 # Usage: jailrun token <subcommand> [options]
 #
-# Keychain サービス名: jailrun:<name>
-# 例: jailrun:github:classic → Keychain に "jailrun:github:classic" として保存
-# name は "namespace:key" 形式を推奨（例: github:classic, github:fine-grained-myorg）
+# Keychain service name: jailrun:<name>
+# Example: jailrun:github:classic -> stored as "jailrun:github:classic" in Keychain
+# Recommended name format: "namespace:key" (e.g., github:classic, github:fine-grained-myorg)
 
 set -eu
 
@@ -14,12 +14,12 @@ _service_name() {
   echo "${_SERVICE_PREFIX}:$1"
 }
 
-# トークンの先頭12文字を表示用に切り出す
+# Extract the first 12 characters of a token for display
 _token_preview() {
   printf '%.12s...' "$1"
 }
 
-# ─── OS 別ヘルパー ──────────────────────────────────────
+# --- OS-specific helpers ---
 
 _get_token() {
   local _service="$1"
@@ -29,7 +29,7 @@ _get_token() {
       ;;
     Linux)
       if ! command -v secret-tool >/dev/null 2>&1; then
-        echo "ERROR: secret-tool 未インストール (sudo apt install libsecret-tools gnome-keyring)" >&2
+        echo "ERROR: secret-tool not installed (sudo apt install libsecret-tools gnome-keyring)" >&2
         return 1
       fi
       secret-tool lookup service "$_service" account "$USER" 2>/dev/null || true
@@ -71,11 +71,11 @@ _check_gh_expiration() {
   if [ -n "$_expires" ]; then
     echo "$_expires"
   else
-    echo "不明"
+    echo "unknown"
   fi
 }
 
-# ─── サブコマンド ────────────────────────────────────────
+# --- Subcommands ---
 
 _cmd_add() {
   local _name=""
@@ -96,24 +96,24 @@ _cmd_add() {
   _existing=$(_get_token "$_service") || true
 
   if [ -n "$_existing" ]; then
-    echo "[token] '$_name' は既に登録済みです ($(_token_preview "$_existing"))" >&2
-    echo "[token] 更新するには 'jailrun token rotate --name $_name' を使ってください" >&2
+    echo "[token] '$_name' is already registered ($(_token_preview "$_existing"))" >&2
+    echo "[token] use 'jailrun token rotate --name $_name' to update" >&2
     exit 1
   fi
 
-  printf '[%s] トークンを入力: ' "$_name"
+  printf '[%s] Enter token: ' "$_name"
   stty -echo
   read _token
   stty echo
   echo
 
   if [ -z "$_token" ]; then
-    echo "[$_name] 空のためスキップ"
+    echo "[$_name] empty input, skipping"
     return
   fi
 
   _store_token "$_service" "$_token"
-  echo "[$_name] 保存完了 ($(_token_preview "$_token"))"
+  echo "[$_name] saved ($(_token_preview "$_token"))"
 }
 
 _cmd_rotate() {
@@ -135,39 +135,39 @@ _cmd_rotate() {
   _current=$(_get_token "$_service") || true
 
   if [ -z "$_current" ]; then
-    echo "[$_name] トークン未登録" >&2
-    echo "[$_name] 'jailrun token add --name $_name' で追加してください" >&2
+    echo "[$_name] token not registered" >&2
+    echo "[$_name] use 'jailrun token add --name $_name' to add" >&2
     exit 1
   fi
 
-  echo "[$_name] 現在のトークン: $(_token_preview "$_current")"
-  # GitHub トークンの場合は有効期限を表示
+  echo "[$_name] current token: $(_token_preview "$_current")"
+  # Show expiration for GitHub tokens
   case "$_name" in
     github:*)
-      echo "[$_name] 有効期限: $(_check_gh_expiration "$_current")"
+      echo "[$_name] expiration: $(_check_gh_expiration "$_current")"
       ;;
   esac
-  printf '更新しますか？ [y/N] '
+  printf 'Update? [y/N] '
   read _yn
   case "$_yn" in
     [yY]) ;;
-    *) echo "スキップ"; return ;;
+    *) echo "skipped"; return ;;
   esac
 
-  printf '[%s] 新しいトークンを入力: ' "$_name"
+  printf '[%s] Enter new token: ' "$_name"
   stty -echo
   read _token
   stty echo
   echo
 
   if [ -z "$_token" ]; then
-    echo "[$_name] 空のためスキップ"
+    echo "[$_name] empty input, skipping"
     return
   fi
 
   _delete_token "$_service"
   _store_token "$_service" "$_token"
-  echo "[$_name] 更新完了 ($(_token_preview "$_token"))"
+  echo "[$_name] updated ($(_token_preview "$_token"))"
 }
 
 _cmd_delete() {
@@ -189,28 +189,28 @@ _cmd_delete() {
   _current=$(_get_token "$_service") || true
 
   if [ -z "$_current" ]; then
-    echo "[$_name] トークン未登録" >&2
+    echo "[$_name] token not registered" >&2
     exit 1
   fi
 
-  echo "[$_name] 現在のトークン: $(_token_preview "$_current")"
-  printf '削除しますか？ [y/N] '
+  echo "[$_name] current token: $(_token_preview "$_current")"
+  printf 'Delete? [y/N] '
   read _yn
   case "$_yn" in
     [yY]) ;;
-    *) echo "スキップ"; return ;;
+    *) echo "skipped"; return ;;
   esac
 
   _delete_token "$_service"
-  echo "[$_name] 削除完了"
+  echo "[$_name] deleted"
 }
 
 _cmd_list() {
-  # Keychain から jailrun: プレフィックスのエントリを列挙
+  # List entries with jailrun: prefix from keychain
   local _found=false
   case "$(uname)" in
     Darwin)
-      # security dump-keychain から jailrun: サービスを抽出
+      # Extract jailrun: services from security dump-keychain
       security dump-keychain 2>/dev/null | grep "\"svce\"<blob>=\"${_SERVICE_PREFIX}:" | while IFS= read -r _line; do
         _svc=$(echo "$_line" | sed "s/.*\"svce\"<blob>=\"//;s/\".*//")
         _name="${_svc#${_SERVICE_PREFIX}:}"
@@ -222,19 +222,19 @@ _cmd_list() {
       done
       ;;
     Linux)
-      # secret-tool には列挙機能がないため、既知の名前をチェック
-      echo "[token list] Linux では既知のトークン名を指定して確認してください" >&2
+      # secret-tool has no enumeration capability; check known names
+      echo "[token list] on Linux, specify a known token name to check" >&2
       echo "  jailrun token rotate --name <name>" >&2
       return
       ;;
   esac
   if [ "$_found" = false ]; then
-    echo "登録済みのトークンはありません"
-    echo "  jailrun token add --name <name> で追加してください"
+    echo "no tokens registered"
+    echo "  use 'jailrun token add --name <name>' to add one"
   fi
 }
 
-# ─── ディスパッチ ────────────────────────────────────────
+# --- Dispatch ---
 
 _subcmd="${1:-}"
 shift 2>/dev/null || true
@@ -249,10 +249,10 @@ case "$_subcmd" in
 Usage: jailrun token <subcommand> [options]
 
 Subcommands:
-  add     --name <name>    トークンを新規登録
-  rotate  --name <name>    既存トークンをローテーション
-  delete  --name <name>    トークンを削除
-  list                     登録済みトークン一覧
+  add     --name <name>    Register a new token
+  rotate  --name <name>    Rotate an existing token
+  delete  --name <name>    Delete a token
+  list                     List registered tokens
 
 Examples:
   jailrun token add --name github:classic
@@ -262,7 +262,7 @@ Examples:
 
 Naming convention: <namespace>:<key>
   github:classic              GitHub Classic PAT
-  github:fine-grained-myorg   GitHub Fine-grained PAT (org別)
+  github:fine-grained-myorg   GitHub Fine-grained PAT (per-org)
 
 Keychain service name: jailrun:<name>
 USAGE

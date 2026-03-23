@@ -1,9 +1,9 @@
 #!/bin/sh
-# git worktree 検出（sandbox-darwin.sh / sandbox-linux.sh 共通）
-# source 後に以下の変数が設定される:
-#   _git_common_dir       - git common dir（worktree 以外では空）
-#   _git_parent_toplevel  - 親リポジトリの toplevel（worktree 以外では空）
-#   _other_worktrees      - 他のワークツリーのパス（改行区切り）
+# Git worktree detection (shared by sandbox-darwin.sh / sandbox-linux.sh)
+# After sourcing, the following variables are set:
+#   _git_common_dir       - git common dir (empty if not a worktree)
+#   _git_parent_toplevel  - parent repository toplevel (empty if not a worktree)
+#   _other_worktrees      - paths of other worktrees (newline-separated)
 
 _detect_git_worktree() {
   local _cwd="$PWD"
@@ -18,7 +18,7 @@ _detect_git_worktree() {
     _git_common_dir="$_cwd/$_git_common_dir"
   fi
 
-  # 通常リポジトリ（$_cwd 配下）なら追加不要
+  # Regular repository (under $_cwd) - no additional paths needed
   case "$_git_common_dir" in
     "$_cwd"/*)
       _git_common_dir=""
@@ -28,10 +28,10 @@ _detect_git_worktree() {
 
   [ -z "$_git_common_dir" ] && return 0
 
-  # worktree: 親リポジトリの toplevel を取得
+  # Worktree: get the parent repository toplevel
   _git_parent_toplevel="${_git_common_dir%/.git}"
 
-  # 他のワークツリーを列挙（自分自身と親は除外）
+  # Enumerate other worktrees (exclude self and parent)
   local _wt_path=""
   local _wt_tmp="$_tmpdir/worktrees"
   { git worktree list --porcelain 2>/dev/null; echo; } > "$_wt_tmp"

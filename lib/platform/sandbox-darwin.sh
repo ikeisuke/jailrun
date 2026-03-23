@@ -1,10 +1,10 @@
 #!/bin/sh
-# macOS Seatbelt sandbox 構築
-# credential-guard.sh から source される
+# macOS Seatbelt sandbox construction
+# Sourced by credential-guard.sh
 #
-# 前提: $_tmpdir, $_SANDBOX_DENY_READ_PATHS, $_SANDBOX_ALLOW_WRITE_PATHS,
-#        $_SANDBOX_ALLOW_WRITE_FILES が設定済みであること（改行区切り）
-# 出力: _setup_sandbox() 関数（_sandbox_cmd を設定する）
+# Requires: $_tmpdir, $_SANDBOX_DENY_READ_PATHS, $_SANDBOX_ALLOW_WRITE_PATHS,
+#           $_SANDBOX_ALLOW_WRITE_FILES to be set (newline-separated)
+# Outputs: _setup_sandbox() function (sets _sandbox_cmd)
 
 . "$JAILRUN_LIB/platform/git-worktree.sh"
 
@@ -12,13 +12,13 @@ _setup_sandbox() {
   local _cwd="$PWD"
   _detect_git_worktree
 
-  # Seatbelt プロファイル生成
+  # Generate Seatbelt profile
   local _sb="$_tmpdir/sandbox.sb"
   {
     echo '(version 1)'
     echo '(allow default)'
     echo ''
-    echo ';; 機密ディレクトリの読み取りを拒否'
+    echo ';; Deny read access to sensitive directories'
     echo '(deny file-read*'
     _OLD_IFS="$IFS"; IFS="
 "
@@ -29,7 +29,7 @@ _setup_sandbox() {
     echo ')'
     echo ''
     if [ "${AGENT_SANDBOX_DEBUG:-}" != "1" ]; then
-      echo ';; 書き込みをホワイトリストに制限'
+      echo ';; Restrict writes to whitelisted paths'
       echo '(deny file-write*'
       echo '  (require-not'
       echo '    (require-any'
@@ -56,7 +56,7 @@ _setup_sandbox() {
       echo ')))'
       if [ -n "$_other_worktrees" ]; then
         echo ''
-        echo ';; 他のワークツリーへの書き込みを拒否'
+        echo ';; Deny writes to other worktrees'
         echo '(deny file-write*'
         _OLD_IFS="$IFS"; IFS="
 "
@@ -67,7 +67,7 @@ _setup_sandbox() {
         echo ')'
       fi
     else
-      echo ';; デバッグ: 書き込み制限を無効化（読み取り拒否のみ有効）'
+      echo ';; Debug: write restrictions disabled (read-deny only)'
     fi
   } > "$_sb"
   _sandbox_cmd="sandbox-exec -f $_sb"

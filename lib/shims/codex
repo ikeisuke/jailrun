@@ -1,3 +1,3 @@
 #!/bin/sh
-# jailrun shim: sandbox 内から codex が呼ばれたとき jailrun 経由にする
+# jailrun shim: redirect codex calls from within sandbox through jailrun
 exec jailrun codex "$@"

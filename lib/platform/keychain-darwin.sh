@@ -1,9 +1,9 @@
 #!/bin/sh
-# macOS Keychain からトークンを取得
-# credential-guard.sh から source される
+# Retrieve token from macOS Keychain
+# Sourced by credential-guard.sh
 #
-# 前提: $GH_KEYCHAIN_SERVICE が設定済みであること
-# 出力: $_gh_token, $_gh_token_source
+# Requires: $GH_KEYCHAIN_SERVICE to be set
+# Outputs: $_gh_token, $_gh_token_source
 
 _get_gh_token() {
   _gh_token=""
