@@ -56,11 +56,7 @@ _rewrite_codex_args() {
 
 # sandbox 済み → 実体を直接 exec（クレデンシャル分離済みのため再処理不要）
 if _is_sandboxed; then
-  # JAILRUN_DIR を除外した PATH で実体を探して exec
-  _orig_path=("${path[@]}")
-  path=("${path[@]:#$JAILRUN_DIR}")
   REAL_BIN="$(command -v "$WRAPPER_NAME" 2>/dev/null)" || true
-  path=("${_orig_path[@]}")
   if [[ -z "$REAL_BIN" ]]; then
     echo "[$WRAPPER_NAME] ERROR: 実体が見つかりません" >&2
     exit 1

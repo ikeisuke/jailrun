@@ -42,11 +42,8 @@ GEMINI_BIN=""
 _auto_detect_bin() {
   local _var="$1" _cmd="$2"
   if [[ -z "${(P)_var}" ]]; then
-    local _orig_path=("${path[@]}")
-    path=("${path[@]:#$JAILRUN_DIR}")
     local _found
     _found=$(command -v "$_cmd" 2>/dev/null) || true
-    path=("${_orig_path[@]}")
     if [[ -n "$_found" ]]; then
       echo "$_var=\"$_found\"" >> "$CONFIG_FILE"
       eval "$_var=\"$_found\""
@@ -68,14 +65,9 @@ else
   echo "[$_WRAPPER_NAME] 初期設定ファイルを作成します..." >&2
   mkdir -p "$CONFIG_DIR"
 
-  # バイナリパスを自動検出（ラッパー自身を除外するため PATH から JAILRUN_DIR を外して検索）
-  # zsh の path 配列からフィルタして検索
   _detect_bin() {
-    local _orig_path=("${path[@]}")
-    path=("${path[@]:#$JAILRUN_DIR}")
     local _found
     _found=$(command -v "$1" 2>/dev/null) || true
-    path=("${_orig_path[@]}")
     echo "${_found:-# not found: $1}"
   }
 
