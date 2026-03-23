@@ -46,8 +46,8 @@ _setup_sandbox() {
     # Filesystem
     echo '-p ProtectSystem=strict'
     echo '-p ProtectHome=read-only'
-    printf '-p ReadWritePaths=%s\n' "$_cwd"
-    printf '-p ReadWritePaths=%s\n' "$_tmpdir"
+    echo "-p ReadWritePaths=$_cwd"
+    echo "-p ReadWritePaths=$_tmpdir"
     # Kernel protection
     echo '-p ProtectProc=invisible'
     echo '-p ProtectClock=yes'
@@ -69,21 +69,21 @@ _setup_sandbox() {
     echo '-p CoredumpFilter=0'
     echo '-p KeyringMode=private'
     # Explicit write protection for config directory
-    printf '-p ReadOnlyPaths=%s\n' "${CONFIG_DIR:-$HOME/.config/jailrun}"
+    echo "-p ReadOnlyPaths=${CONFIG_DIR:-$HOME/.config/jailrun}"
 
     # Git worktree
     if [ -n "$_git_parent_toplevel" ]; then
-      printf '-p ReadWritePaths=%s\n' "$_git_parent_toplevel"
+      echo "-p ReadWritePaths=$_git_parent_toplevel"
       if [ -n "$_other_worktrees" ]; then
         _OLD_IFS="$IFS"; IFS="
 "
         for _wt in $_other_worktrees; do
-          [ -d "$_wt" ] && printf '-p InaccessiblePaths=%s\n' "$_wt"
+          [ -d "$_wt" ] && echo "-p InaccessiblePaths=$_wt"
         done
         IFS="$_OLD_IFS"
       fi
     elif [ -n "$_git_common_dir" ]; then
-      printf '-p ReadWritePaths=%s\n' "$_git_common_dir"
+      echo "-p ReadWritePaths=$_git_common_dir"
     fi
 
     # Make whitelisted directories writable
@@ -91,12 +91,12 @@ _setup_sandbox() {
 "
     for _p in $_SANDBOX_ALLOW_WRITE_PATHS; do
       mkdir -p "$_p" 2>/dev/null || true
-      printf '-p ReadWritePaths=%s\n' "$_p"
+      echo "-p ReadWritePaths=$_p"
     done
 
     # Make sensitive directories inaccessible
     for _p in $_SANDBOX_DENY_READ_PATHS; do
-      [ -d "$_p" ] && printf '-p InaccessiblePaths=%s\n' "$_p"
+      [ -d "$_p" ] && echo "-p InaccessiblePaths=$_p"
     done
     IFS="$_OLD_IFS"
   } > "$_props"
