@@ -35,9 +35,7 @@ _resolve_real_bin() {
 
 # Sandbox detection helper (env variable or file access)
 _is_sandboxed() {
-  [ "${_CREDENTIAL_GUARD_SANDBOXED:-}" = "1" ] && return 0
-  [ -f "$HOME/.aws/config" ] && ! test -r "$HOME/.aws/config" 2>/dev/null && return 0
-  return 1
+  [ "${_CREDENTIAL_GUARD_SANDBOXED:-}" = "1" ]
 }
 
 # Rewrite Codex args and exec.
