@@ -120,7 +120,11 @@ _build_exec_script() {
           esac
         done < "$_tmpdir/env-spec"
         while IFS= read -r _line; do
-          printf '  %s \\\n' "$_line"
+          # Quote each property arg to preserve spaces (e.g. DeviceAllow=/dev/null rw)
+          case "$_line" in
+            -p\ *) printf '  -p "%s" \\\n' "${_line#-p }" ;;
+            *)     printf '  %s \\\n' "$_line" ;;
+          esac
         done < "$_tmpdir/systemd-props"
         echo '  -- "$@"'
         ;;
