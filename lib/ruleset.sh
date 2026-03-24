@@ -62,12 +62,12 @@ _check_gh_auth() {
 _ruleset_exists() {
   _owner_repo="$1"
   _name="$2"
-  _rulesets=""
-  _rulesets=$(gh api "repos/${_owner_repo}/rulesets" --paginate 2>/dev/null) || true
-  if [ -z "$_rulesets" ]; then
+  _names=""
+  _names=$(gh api "repos/${_owner_repo}/rulesets" --paginate --jq '.[].name' 2>/dev/null) || true
+  if [ -z "$_names" ]; then
     return 1
   fi
-  echo "$_rulesets" | grep -q "\"name\":.*\"${_name}\"" && return 0
+  echo "$_names" | grep -qx "${_name}" && return 0
   return 1
 }
 
@@ -198,6 +198,11 @@ USAGE
         return 1
         ;;
       *)
+        if [ -n "$_repo_arg" ]; then
+          echo "[ruleset] ERROR: unexpected argument '$1'" >&2
+          echo "Run 'jailrun ruleset --help' for usage" >&2
+          return 1
+        fi
         _repo_arg="$1"; shift
         ;;
     esac
