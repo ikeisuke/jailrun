@@ -75,8 +75,9 @@ _build_env_spec() {
     echo 'UNSET GH_TOKEN'
     echo 'UNSET GITHUB_TOKEN'
     # Fallback: clear D-Bus address for abstract sockets (can't use InaccessiblePaths)
+    # Use SET (empty) not UNSET — systemd-run --user needs the address to start
     if [ "${_DBUS_NEEDS_ENV_CLEAR:-}" = "1" ]; then
-      echo 'UNSET DBUS_SESSION_BUS_ADDRESS'
+      echo 'SET DBUS_SESSION_BUS_ADDRESS='
     fi
     printf 'SET AWS_CONFIG_FILE=%s\n' "$_aws_config"
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
