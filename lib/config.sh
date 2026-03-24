@@ -18,19 +18,16 @@ if [ ! -f "$CONFIG_FILE" ] && [ -f "$_OLD_CONFIG_DIR/config" ]; then
   echo "[$_WRAPPER_NAME] config migrated: $_OLD_CONFIG_DIR -> $CONFIG_DIR" >&2
 fi
 
-# save caller's env override before defaults overwrite it
+# save caller's env overrides before defaults overwrite them
 _GH_TOKEN_NAME_OVERRIDE="${GH_TOKEN_NAME:-}"
+_SANDBOX_PASSTHROUGH_ENV_OVERRIDE="${SANDBOX_PASSTHROUGH_ENV:-}"
 
-# defaults
-ALLOWED_AWS_PROFILES=""
-DEFAULT_AWS_PROFILE=""
-GH_TOKEN_NAME="classic"
+# defaults (JAILRUN_LIB is set by bin/jailrun before this file is sourced)
+. "$JAILRUN_LIB/config-defaults.sh"
+_load_config_defaults
 _DEFAULT_REGION="ap-northeast-1"
-
-SANDBOX_EXTRA_DENY_READ=""
-SANDBOX_EXTRA_ALLOW_WRITE=""
-SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
-SANDBOX_PASSTHROUGH_ENV="${SANDBOX_PASSTHROUGH_ENV:-}"
+SANDBOX_PASSTHROUGH_ENV="$_SANDBOX_PASSTHROUGH_ENV_OVERRIDE"
+unset _SANDBOX_PASSTHROUGH_ENV_OVERRIDE
 
 # load or generate config
 if [ -f "$CONFIG_FILE" ]; then
@@ -50,37 +47,7 @@ else
   echo "[$_WRAPPER_NAME] generating initial config..." >&2
   mkdir -p "$CONFIG_DIR"
 
-  cat > "$CONFIG_FILE" <<'CONF'
-# jailrun config (machine-specific, not tracked by git)
-
-# --- AWS ---
-# allowed AWS profiles (space-separated)
-ALLOWED_AWS_PROFILES="default"
-
-# default AWS profile
-DEFAULT_AWS_PROFILE="default"
-
-# --- GitHub ---
-# short token name — internally expanded to jailrun:github:<name>
-# e.g. classic / fine-grained-myorg
-GH_TOKEN_NAME="classic"
-
-# --- sandbox customization ---
-# additional read-deny paths (space-separated)
-# default: ~/.aws ~/.ssh ~/.gnupg ~/.config/gh
-#SANDBOX_EXTRA_DENY_READ=""
-
-# additional write-allow paths (space-separated)
-# default: ~/.claude ~/.codex ~/.kiro ~/.gemini ~/.cache etc.
-#SANDBOX_EXTRA_ALLOW_WRITE=""
-
-# additional write-allow files (space-separated)
-#SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
-
-# environment variables to pass through to sandbox (space-separated)
-# e.g. SANDBOX_PASSTHROUGH_ENV="ANTHROPIC_API_KEY OPENAI_API_KEY"
-#SANDBOX_PASSTHROUGH_ENV=""
-CONF
+  _write_default_config "$CONFIG_FILE"
   echo "[$_WRAPPER_NAME] created: $CONFIG_FILE" >&2
   echo "[$_WRAPPER_NAME] please review: $CONFIG_FILE" >&2
   exit 1

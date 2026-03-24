@@ -9,11 +9,9 @@ set -eu
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/jailrun"
 CONFIG_FILE="$CONFIG_DIR/config"
 
-# known config keys (space-separated)
-_KNOWN_KEYS="ALLOWED_AWS_PROFILES DEFAULT_AWS_PROFILE GH_TOKEN_NAME SANDBOX_EXTRA_DENY_READ SANDBOX_EXTRA_ALLOW_WRITE SANDBOX_EXTRA_ALLOW_WRITE_FILES SANDBOX_PASSTHROUGH_ENV"
-
-# list-type keys (support --append / --remove)
-_LIST_KEYS="ALLOWED_AWS_PROFILES SANDBOX_EXTRA_DENY_READ SANDBOX_EXTRA_ALLOW_WRITE SANDBOX_EXTRA_ALLOW_WRITE_FILES SANDBOX_PASSTHROUGH_ENV"
+# resolve lib dir (works both in dev and after make install)
+_LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$_LIB_DIR/config-defaults.sh"
 
 _is_known_key() {
   for _k in $_KNOWN_KEYS; do
@@ -29,23 +27,23 @@ _is_list_key() {
   return 1
 }
 
-# --- show ---
-_cmd_show() {
+_require_config() {
   if [ ! -f "$CONFIG_FILE" ]; then
     echo "[config] no config file found: $CONFIG_FILE" >&2
     echo "[config] run 'jailrun config init' to create one" >&2
     exit 1
   fi
+}
 
-  # source defaults then config
-  ALLOWED_AWS_PROFILES=""
-  DEFAULT_AWS_PROFILE=""
-  GH_TOKEN_NAME="classic"
-  SANDBOX_EXTRA_DENY_READ=""
-  SANDBOX_EXTRA_ALLOW_WRITE=""
-  SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
-  SANDBOX_PASSTHROUGH_ENV=""
+_load_config() {
+  _load_config_defaults
   . "$CONFIG_FILE"
+}
+
+# --- show ---
+_cmd_show() {
+  _require_config
+  _load_config
 
   for _k in $_KNOWN_KEYS; do
     eval "_v=\"\$$_k\""
@@ -56,7 +54,6 @@ _cmd_show() {
 # --- set ---
 _cmd_set() {
   _mode="replace"
-  # parse flags
   while [ $# -gt 0 ]; do
     case "$1" in
       --append)  _mode="append";  shift ;;
@@ -90,11 +87,7 @@ _cmd_set() {
     exit 1
   fi
 
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "[config] no config file found: $CONFIG_FILE" >&2
-    echo "[config] run 'jailrun config init' to create one" >&2
-    exit 1
-  fi
+  _require_config
 
   _value="${1:-}"
 
@@ -106,19 +99,10 @@ _cmd_set() {
   esac
 
   if [ "$_mode" = "append" ] || [ "$_mode" = "remove" ]; then
-    # read current value
-    ALLOWED_AWS_PROFILES=""
-    DEFAULT_AWS_PROFILE=""
-    GH_TOKEN_NAME="classic"
-    SANDBOX_EXTRA_DENY_READ=""
-    SANDBOX_EXTRA_ALLOW_WRITE=""
-    SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
-    SANDBOX_PASSTHROUGH_ENV=""
-    . "$CONFIG_FILE"
+    _load_config
     eval "_current=\"\$$_key\""
 
     if [ "$_mode" = "append" ]; then
-      # avoid duplicates
       _found=false
       for _w in $_current; do
         [ "$_w" = "$_value" ] && _found=true
@@ -131,7 +115,6 @@ _cmd_set() {
         _value="$_current $_value"
       fi
     else
-      # remove
       _new=""
       for _w in $_current; do
         [ "$_w" != "$_value" ] && _new="${_new:+$_new }$_w"
@@ -142,6 +125,7 @@ _cmd_set() {
 
   # update config file: replace existing line or append
   _tmp="$CONFIG_FILE.tmp.$$"
+  trap 'rm -f "$_tmp"' EXIT
   _replaced=false
   while IFS= read -r _line; do
     case "$_line" in
@@ -164,11 +148,7 @@ _cmd_set() {
 
 # --- edit ---
 _cmd_edit() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "[config] no config file found: $CONFIG_FILE" >&2
-    echo "[config] run 'jailrun config init' to create one" >&2
-    exit 1
-  fi
+  _require_config
   exec "${EDITOR:-vi}" "$CONFIG_FILE"
 }
 
@@ -194,37 +174,7 @@ _cmd_init() {
   fi
 
   mkdir -p "$CONFIG_DIR"
-  cat > "$CONFIG_FILE" <<'CONF'
-# jailrun config (machine-specific, not tracked by git)
-
-# --- AWS ---
-# allowed AWS profiles (space-separated)
-ALLOWED_AWS_PROFILES="default"
-
-# default AWS profile
-DEFAULT_AWS_PROFILE="default"
-
-# --- GitHub ---
-# short token name — internally expanded to jailrun:github:<name>
-# e.g. classic / fine-grained-myorg
-GH_TOKEN_NAME="classic"
-
-# --- sandbox customization ---
-# additional read-deny paths (space-separated)
-# default: ~/.aws ~/.ssh ~/.gnupg ~/.config/gh
-#SANDBOX_EXTRA_DENY_READ=""
-
-# additional write-allow paths (space-separated)
-# default: ~/.claude ~/.codex ~/.kiro ~/.gemini ~/.cache etc.
-#SANDBOX_EXTRA_ALLOW_WRITE=""
-
-# additional write-allow files (space-separated)
-#SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
-
-# environment variables to pass through to sandbox (space-separated)
-# e.g. SANDBOX_PASSTHROUGH_ENV="ANTHROPIC_API_KEY OPENAI_API_KEY"
-#SANDBOX_PASSTHROUGH_ENV=""
-CONF
+  _write_default_config "$CONFIG_FILE"
   echo "[config] created: $CONFIG_FILE"
 }
 
