@@ -96,8 +96,22 @@ _build_env_spec() {
     # Passthrough custom environment variables
     # Values are escaped for safe embedding in double-quoted shell context
     for _var in $SANDBOX_PASSTHROUGH_ENV; do
+      # Block reserved credential variables that the sandbox explicitly manages
+      case "$_var" in
+        AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|\
+        AWS_PROFILE|AWS_DEFAULT_PROFILE|AWS_ROLE_ARN|AWS_ROLE_SESSION_NAME|\
+        GH_TOKEN|GITHUB_TOKEN|SSH_AUTH_SOCK)
+          echo "[$_WRAPPER_NAME] WARN: ignoring reserved variable in SANDBOX_PASSTHROUGH_ENV: $_var" >&2
+          continue ;;
+      esac
       eval "_val=\"\${$_var:-}\""
       if [ -n "$_val" ]; then
+        # Reject values containing newlines (env-spec is line-based)
+        case "$_val" in
+          *"
+"*) echo "[$_WRAPPER_NAME] WARN: skipping $_var (value contains newlines)" >&2
+              continue ;;
+        esac
         _escaped=$(printf '%s' "$_val" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g')
         printf 'SET %s=%s\n' "$_var" "$_escaped"
       fi
