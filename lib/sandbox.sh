@@ -83,6 +83,10 @@ _build_env_spec() {
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
     printf 'SET GH_CONFIG_DIR=%s/gh\n' "$_tmpdir"
     echo 'SET SSH_AUTH_SOCK='
+    # Provide CA certs via file (macOS Seatbelt blocks Security framework)
+    if [ -f /etc/ssl/cert.pem ]; then
+      echo 'SET SSL_CERT_FILE=/etc/ssl/cert.pem'
+    fi
     printf 'SET PATH=%s/shims:%s\n' "$JAILRUN_LIB" "$PATH"
     if [ -n "$_gh_token" ]; then
       _build_git_askpass
