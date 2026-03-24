@@ -14,7 +14,7 @@ load helpers
     cat > "$XDG_CONFIG_HOME/jailrun/config" <<CONF
 ALLOWED_AWS_PROFILES=""
 DEFAULT_AWS_PROFILE=""
-GH_KEYCHAIN_SERVICE="github:classic"
+GH_TOKEN_NAME="classic"
 CONF
     . "$JAILRUN_LIB/config.sh"
     . "$JAILRUN_LIB/credentials.sh"
@@ -47,7 +47,7 @@ CONF
     cat > "$XDG_CONFIG_HOME/jailrun/config" <<CONF
 ALLOWED_AWS_PROFILES=""
 DEFAULT_AWS_PROFILE=""
-GH_KEYCHAIN_SERVICE="github:classic"
+GH_TOKEN_NAME="classic"
 CONF
     . "$JAILRUN_LIB/config.sh"
     . "$JAILRUN_LIB/credentials.sh"

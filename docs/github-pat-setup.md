@@ -112,10 +112,16 @@ Token names are arbitrary. Recommended naming by Organization:
 
 ### Switch Active Token
 
-Set the active token in `~/.config/jailrun/config`:
+Set the active token in `~/.config/jailrun/config` (short name only):
 
 ```bash
-GH_KEYCHAIN_SERVICE="github:fine-grained-myorg"  # or github:classic
+GH_TOKEN_NAME="fine-grained-myorg"  # or classic
+```
+
+Override at runtime:
+
+```bash
+GH_TOKEN_NAME=fine-grained-myorg jailrun claude
 ```
 
 ### List Registered Tokens

@@ -10,7 +10,7 @@ setup() {
   cat > "$TEST_CONFIG_DIR/jailrun/config" <<CONF
 ALLOWED_AWS_PROFILES=""
 DEFAULT_AWS_PROFILE=""
-GH_KEYCHAIN_SERVICE="github:classic"
+GH_TOKEN_NAME="classic"
 CONF
 }
 

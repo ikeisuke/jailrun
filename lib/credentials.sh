@@ -3,7 +3,7 @@
 # sourced by credential-guard.sh
 #
 # requires: $_WRAPPER_NAME, $DEFAULT_AWS_PROFILE, $ALLOWED_AWS_PROFILES,
-#           $_DEFAULT_REGION, $GH_KEYCHAIN_SERVICE, $JAILRUN_LIB
+#           $_DEFAULT_REGION, $GH_TOKEN_NAME, $JAILRUN_LIB
 # exports: $_tmpdir, $_aws_config, $_aws_creds, $_gh_token, $_gh_token_source
 
 _tmpdir=$(mktemp -d)

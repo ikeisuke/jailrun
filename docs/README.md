@@ -102,8 +102,8 @@ ALLOWED_AWS_PROFILES="dev staging"
 # default AWS profile
 DEFAULT_AWS_PROFILE="dev"
 
-# token name registered via `jailrun token`
-GH_KEYCHAIN_SERVICE="github:classic"
+# short token name — internally expanded to jailrun:github:<name>
+GH_TOKEN_NAME="classic"
 ```
 
 Binary paths are resolved automatically via `command -v` with PATH cleaning
