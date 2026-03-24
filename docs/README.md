@@ -141,10 +141,10 @@ jailrun codex
 jailrun kiro-cli
 jailrun gemini
 
-# use a different AWS profile temporarily (must be in allowlist)
-AGENT_AWS_PROFILE=staging jailrun claude
+# specify AWS profile(s) (must be in allowlist)
+AGENT_AWS_PROFILES=staging jailrun claude
 
-# load multiple profiles (must be in allowlist)
+# load multiple profiles
 AGENT_AWS_PROFILES="dev staging" jailrun claude
 
 # inherit shell's AWS_PROFILE
@@ -183,8 +183,8 @@ The command is idempotent: existing rulesets with the same name are skipped.
 ### AWS Profile Priority
 
 ```
-AGENT_AWS_PROFILE  →  AWS_PROFILE  →  DEFAULT_AWS_PROFILE in config
-(highest)             (shell env)      (fallback)
+AGENT_AWS_PROFILES  →  AWS_PROFILE  →  DEFAULT_AWS_PROFILE in config
+(highest)              (shell env)      (fallback)
 ```
 
 ## Sandbox Protection

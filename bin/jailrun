@@ -6,8 +6,7 @@
 # Commands: claude, codex, gemini, kiro-cli, kiro-cli-chat, token, ruleset
 #
 # Environment:
-#   AGENT_AWS_PROFILE=x    specify AWS profile
-#   AGENT_AWS_PROFILES=x   load multiple AWS profiles (space-separated)
+#   AGENT_AWS_PROFILES=x   specify AWS profiles (space-separated)
 #   AGENT_SANDBOX_DEBUG=1  sandbox debug mode
 
 set -eu
@@ -62,14 +61,13 @@ Commands:
   ruleset             create GitHub repository rulesets
 
 Environment:
-  AGENT_AWS_PROFILE=x    specify AWS profile
-  AGENT_AWS_PROFILES=x   load multiple AWS profiles (space-separated)
+  AGENT_AWS_PROFILES=x   specify AWS profiles (space-separated)
   AGENT_SANDBOX_DEBUG=1  sandbox debug mode
 
 Examples:
   jailrun claude
   jailrun codex exec "fix the bug"
-  AGENT_AWS_PROFILE=staging jailrun claude
+  AGENT_AWS_PROFILES=staging jailrun claude
   jailrun token add --name github:classic
   jailrun token rotate --name github:classic
   jailrun token list

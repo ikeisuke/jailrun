@@ -4,7 +4,7 @@
 # WRAPPER_NAME, JAILRUN_DIR, JAILRUN_LIB must be set by the caller
 #
 # Config: ~/.config/jailrun/config
-# Profile override: AGENT_AWS_PROFILE=dev jailrun <tool>
+# Profile override: AGENT_AWS_PROFILES="dev staging" jailrun <tool>
 
 set -eu
 

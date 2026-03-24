@@ -23,8 +23,8 @@ jailrun codex exec "fix the bug"
 jailrun gemini
 jailrun kiro-cli
 
-# specify AWS profile
-AGENT_AWS_PROFILE=staging jailrun claude
+# specify AWS profile(s)
+AGENT_AWS_PROFILES=staging jailrun claude
 
 # token management
 jailrun token add --name github:fine-grained-myorg
