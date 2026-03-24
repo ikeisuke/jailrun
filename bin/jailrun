@@ -3,7 +3,7 @@
 # Launch AI coding agents with credential isolation + OS sandbox
 #
 # Usage: jailrun <command> [args...]
-# Commands: claude, codex, gemini, kiro-cli, kiro-cli-chat, token
+# Commands: claude, codex, gemini, kiro-cli, kiro-cli-chat, token, ruleset
 #
 # Environment:
 #   AGENT_AWS_PROFILE=x    specify AWS profile
@@ -45,6 +45,9 @@ case "$_subcmd" in
   token)
     exec "$JAILRUN_LIB/token.sh" "$@"
     ;;
+  ruleset)
+    exec "$JAILRUN_LIB/ruleset.sh" "$@"
+    ;;
   --help|-h|"")
     cat <<'USAGE'
 Usage: jailrun <command> [args...]
@@ -56,6 +59,7 @@ Commands:
   kiro-cli            launch Kiro CLI
   kiro-cli-chat       launch Kiro CLI Chat
   token               token management (add, rotate, delete, list)
+  ruleset             create GitHub repository rulesets
 
 Environment:
   AGENT_AWS_PROFILE=x    specify AWS profile
@@ -69,6 +73,8 @@ Examples:
   jailrun token add --name github:classic
   jailrun token rotate --name github:classic
   jailrun token list
+  jailrun ruleset
+  jailrun ruleset --dry-run owner/repo
 USAGE
     exit 0
     ;;
