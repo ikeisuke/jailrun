@@ -63,7 +63,7 @@ _ruleset_exists() {
   _owner_repo="$1"
   _name="$2"
   _names=""
-  _names=$(gh api "repos/${_owner_repo}/rulesets" --paginate --jq '.[].name' 2>/dev/null) || true
+  _names=$(gh api "repos/${_owner_repo}/rulesets?includes_parents=false" --paginate --jq '.[].name' 2>/dev/null) || true
   if [ -z "$_names" ]; then
     return 1
   fi
@@ -100,6 +100,7 @@ _create_branch_protection() {
       "parameters": {
         "required_approving_review_count": 1,
         "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": false
       }
