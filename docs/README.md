@@ -33,6 +33,7 @@ lib/
 ├── agent-wrapper.sh         # common wrapper (binary resolution, codex arg rewrite)
 ├── aws.sh                   # AWS credential isolation
 ├── token.sh                 # token management (add, rotate, delete, list)
+├── ruleset.sh               # GitHub repository ruleset management
 ├── shims/
 │   └── codex                # delegates to `jailrun codex` inside sandbox
 └── platform/
@@ -149,6 +150,35 @@ AGENT_AWS_PROFILES="dev staging" jailrun claude
 # inherit shell's AWS_PROFILE
 AWS_PROFILE=dev jailrun claude
 ```
+
+### Repository Rulesets
+
+Create GitHub repository rulesets to enforce branch and tag protection:
+
+```bash
+# auto-detect repo from git remote, create rulesets
+jailrun ruleset
+
+# specify repo explicitly
+jailrun ruleset owner/repo
+
+# preview without applying
+jailrun ruleset --dry-run
+jailrun ruleset --dry-run owner/repo
+```
+
+**Rulesets created:**
+
+| Ruleset | Target | Rules |
+|---------|--------|-------|
+| `jailrun-branch-protection` | Default branch | Require PR + 1 approval, block force-push |
+| `jailrun-tag-protection` | All tags | Prevent tag deletion |
+
+**Prerequisites:**
+- `gh` CLI installed and authenticated (`gh auth login`)
+- Admin access to the target repository
+
+The command is idempotent: existing rulesets with the same name are skipped.
 
 ### AWS Profile Priority
 
