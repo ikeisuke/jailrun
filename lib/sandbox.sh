@@ -74,6 +74,7 @@ _build_env_spec() {
     echo 'UNSET AWS_ROLE_SESSION_NAME'
     echo 'UNSET GH_TOKEN'
     echo 'UNSET GITHUB_TOKEN'
+    echo 'UNSET DBUS_SESSION_BUS_ADDRESS'
     printf 'SET AWS_CONFIG_FILE=%s\n' "$_aws_config"
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
     printf 'SET GH_CONFIG_DIR=%s/gh\n' "$_tmpdir"
