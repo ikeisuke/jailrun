@@ -108,6 +108,12 @@ _build_env_spec() {
           echo "[$_WRAPPER_NAME] WARN: ignoring reserved variable in SANDBOX_PASSTHROUGH_ENV: $_var" >&2
           continue ;;
       esac
+      # Validate variable name is a valid shell identifier
+      case "$_var" in
+        [!A-Za-z_]*|*[!A-Za-z0-9_]*)
+          echo "[$_WRAPPER_NAME] WARN: skipping invalid variable name: $_var" >&2
+          continue ;;
+      esac
       eval "_val=\"\${$_var:-}\""
       if [ -n "$_val" ]; then
         # Reject values containing newlines (env-spec is line-based)
