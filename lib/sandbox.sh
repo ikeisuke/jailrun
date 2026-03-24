@@ -93,6 +93,13 @@ _build_env_spec() {
     if [ -z "${_CREDENTIAL_GUARD_SANDBOXED:-}" ] && [ -n "$_sandbox_cmd" ]; then
       echo 'SET _CREDENTIAL_GUARD_SANDBOXED=1'
     fi
+    # Passthrough custom environment variables
+    for _var in $SANDBOX_PASSTHROUGH_ENV; do
+      eval "_val=\"\${$_var:-}\""
+      if [ -n "$_val" ]; then
+        printf 'SET %s=%s\n' "$_var" "$_val"
+      fi
+    done
   } > "$_spec"
 }
 

@@ -27,6 +27,7 @@ _DEFAULT_REGION="ap-northeast-1"
 SANDBOX_EXTRA_DENY_READ=""
 SANDBOX_EXTRA_ALLOW_WRITE=""
 SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
+SANDBOX_PASSTHROUGH_ENV="${SANDBOX_PASSTHROUGH_ENV:-}"
 
 # load or generate config
 if [ -f "$CONFIG_FILE" ]; then
@@ -62,6 +63,10 @@ GH_KEYCHAIN_SERVICE="github:classic"
 
 # additional write-allow files (space-separated)
 #SANDBOX_EXTRA_ALLOW_WRITE_FILES=""
+
+# environment variables to pass through to sandbox (space-separated)
+# e.g. SANDBOX_PASSTHROUGH_ENV="ANTHROPIC_API_KEY OPENAI_API_KEY"
+#SANDBOX_PASSTHROUGH_ENV=""
 CONF
   echo "[$_WRAPPER_NAME] created: $CONFIG_FILE" >&2
   echo "[$_WRAPPER_NAME] please review: $CONFIG_FILE" >&2
