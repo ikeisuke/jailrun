@@ -117,7 +117,7 @@ _create_branch_protection() {
     return 0
   fi
 
-  echo "$_payload" | gh api "repos/${_owner_repo}/rulesets" --input - >/dev/null
+  echo "$_payload" | gh api --method POST "repos/${_owner_repo}/rulesets" --input - >/dev/null
   echo "[ruleset]   created"
 }
 
@@ -156,7 +156,7 @@ _create_tag_protection() {
     return 0
   fi
 
-  echo "$_payload" | gh api "repos/${_owner_repo}/rulesets" --input - >/dev/null
+  echo "$_payload" | gh api --method POST "repos/${_owner_repo}/rulesets" --input - >/dev/null
   echo "[ruleset]   created"
 }
 
