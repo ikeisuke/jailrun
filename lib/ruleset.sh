@@ -27,8 +27,10 @@ _detect_repo() {
     git@github.com:*)
       _repo="${_remote_url#git@github.com:}"
       ;;
-    https://github.com/*)
-      _repo="${_remote_url#https://github.com/}"
+    https://*github.com/*)
+      # Strip https://[user@]github.com/
+      _repo="${_remote_url#https://}"
+      _repo="${_repo#*github.com/}"
       ;;
     ssh://git@github.com/*)
       _repo="${_remote_url#ssh://git@github.com/}"
@@ -79,7 +81,7 @@ _create_branch_protection() {
 
   echo "[ruleset] branch protection: $_BRANCH_RULESET_NAME"
 
-  if _ruleset_exists "$_owner_repo" "$_BRANCH_RULESET_NAME"; then
+  if [ "$_dry_run" != "true" ] && _ruleset_exists "$_owner_repo" "$_BRANCH_RULESET_NAME"; then
     echo "[ruleset]   already exists, skipping"
     return 0
   fi
@@ -128,7 +130,7 @@ _create_tag_protection() {
 
   echo "[ruleset] tag protection: $_TAG_RULESET_NAME"
 
-  if _ruleset_exists "$_owner_repo" "$_TAG_RULESET_NAME"; then
+  if [ "$_dry_run" != "true" ] && _ruleset_exists "$_owner_repo" "$_TAG_RULESET_NAME"; then
     echo "[ruleset]   already exists, skipping"
     return 0
   fi
@@ -209,7 +211,9 @@ USAGE
     esac
   done
 
-  _check_gh_auth || return 1
+  if [ "$_dry_run" != "true" ]; then
+    _check_gh_auth || return 1
+  fi
 
   if [ -n "$_repo_arg" ]; then
     _owner_repo="$_repo_arg"
