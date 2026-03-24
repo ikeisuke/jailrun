@@ -142,6 +142,8 @@ _build_exec_script() {
 
   {
     echo '#!/bin/sh'
+    # set terminal title to agent name (avoids WezTerm showing full sandbox command)
+    printf 'printf '\''\\033]0;jailrun %%s\\007'\'' "${1##*/}"\n'
     case "$_sandbox_cmd" in
       systemd-run)
         # Linux: unset via env -u, set via systemd-run -E
