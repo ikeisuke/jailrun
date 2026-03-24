@@ -94,10 +94,12 @@ _build_env_spec() {
       echo 'SET _CREDENTIAL_GUARD_SANDBOXED=1'
     fi
     # Passthrough custom environment variables
+    # Values are escaped for safe embedding in double-quoted shell context
     for _var in $SANDBOX_PASSTHROUGH_ENV; do
       eval "_val=\"\${$_var:-}\""
       if [ -n "$_val" ]; then
-        printf 'SET %s=%s\n' "$_var" "$_val"
+        _escaped=$(printf '%s' "$_val" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g')
+        printf 'SET %s=%s\n' "$_var" "$_escaped"
       fi
     done
   } > "$_spec"
