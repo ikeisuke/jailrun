@@ -74,20 +74,23 @@ _setup_sandbox() {
     if [ -n "$_xdg_runtime" ] && [ -S "$_xdg_runtime/bus" ]; then
       echo "-p InaccessiblePaths=$_xdg_runtime/bus"
     fi
-    # 2. Block socket from DBUS_SESSION_BUS_ADDRESS if it's a file-based socket
+    # 2. Block socket from DBUS_SESSION_BUS_ADDRESS if it contains a file path
+    #    Handles formats: unix:path=/x, unix:guid=...,path=/x, etc.
     _dbus_addr="${DBUS_SESSION_BUS_ADDRESS:-}"
+    _dbus_sock=""
     case "$_dbus_addr" in
-      unix:path=*)
-        _dbus_sock="${_dbus_addr#unix:path=}"
-        _dbus_sock="${_dbus_sock%%,*}"
-        if [ -S "$_dbus_sock" ]; then
-          echo "-p InaccessiblePaths=$_dbus_sock"
-        fi ;;
-      unix:abstract=*|"")
-        # Abstract sockets can't be blocked via InaccessiblePaths;
-        # clear the address inside the sandbox as fallback
-        _DBUS_NEEDS_ENV_CLEAR=1 ;;
+      *path=/*)
+        # Extract path= value from anywhere in the address string
+        _dbus_tail="${_dbus_addr#*path=}"
+        _dbus_sock="${_dbus_tail%%,*}"
+        _dbus_sock="${_dbus_sock%%;*}" ;;
     esac
+    if [ -n "$_dbus_sock" ] && [ -S "$_dbus_sock" ]; then
+      echo "-p InaccessiblePaths=$_dbus_sock"
+    else
+      # Abstract sockets or unresolvable: clear the address as fallback
+      _DBUS_NEEDS_ENV_CLEAR=1
+    fi
     # Explicit write protection for config directory
     echo "-p ReadOnlyPaths=${CONFIG_DIR:-$HOME/.config/jailrun}"
 
