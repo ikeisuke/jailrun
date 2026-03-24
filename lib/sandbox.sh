@@ -93,6 +93,39 @@ _build_env_spec() {
     if [ -z "${_CREDENTIAL_GUARD_SANDBOXED:-}" ] && [ -n "$_sandbox_cmd" ]; then
       echo 'SET _CREDENTIAL_GUARD_SANDBOXED=1'
     fi
+    # Passthrough custom environment variables
+    # Values are escaped for safe embedding in double-quoted shell context
+    for _var in $SANDBOX_PASSTHROUGH_ENV; do
+      # Block reserved credential variables that the sandbox explicitly manages
+      case "$_var" in
+        AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|\
+        AWS_PROFILE|AWS_DEFAULT_PROFILE|AWS_ROLE_ARN|AWS_ROLE_SESSION_NAME|\
+        AWS_CONFIG_FILE|AWS_SHARED_CREDENTIALS_FILE|\
+        GH_TOKEN|GITHUB_TOKEN|GH_CONFIG_DIR|\
+        SSH_AUTH_SOCK|PATH|GIT_ASKPASS|GIT_TERMINAL_PROMPT|\
+        GIT_CONFIG_COUNT|GIT_CONFIG_KEY_*|GIT_CONFIG_VALUE_*|\
+        _CREDENTIAL_GUARD_SANDBOXED)
+          echo "[$_WRAPPER_NAME] WARN: ignoring reserved variable in SANDBOX_PASSTHROUGH_ENV: $_var" >&2
+          continue ;;
+      esac
+      # Validate variable name is a valid shell identifier
+      case "$_var" in
+        [!A-Za-z_]*|*[!A-Za-z0-9_]*)
+          echo "[$_WRAPPER_NAME] WARN: skipping invalid variable name: $_var" >&2
+          continue ;;
+      esac
+      eval "_val=\"\${$_var:-}\""
+      if [ -n "$_val" ]; then
+        # Reject values containing newlines (env-spec is line-based)
+        case "$_val" in
+          *"
+"*) echo "[$_WRAPPER_NAME] WARN: skipping $_var (value contains newlines)" >&2
+              continue ;;
+        esac
+        _escaped=$(printf '%s' "$_val" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g')
+        printf 'SET %s=%s\n' "$_var" "$_escaped"
+      fi
+    done
   } > "$_spec"
 }
 

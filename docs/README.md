@@ -172,6 +172,19 @@ These directories are blocked at kernel level:
 
 Additional paths can be added via `SANDBOX_EXTRA_DENY_READ` in config.
 
+### Environment Variable Passthrough
+
+By default, the sandbox strips sensitive environment variables. To pass custom
+variables through to the sandboxed process, set `SANDBOX_PASSTHROUGH_ENV` in
+config (space-separated list of variable names):
+
+```bash
+SANDBOX_PASSTHROUGH_ENV="ANTHROPIC_API_KEY OPENAI_API_KEY MY_CUSTOM_VAR"
+```
+
+Only variables that are set and non-empty in the current shell are passed
+through; unset or empty variables are silently skipped.
+
 > **SSH→HTTPS conversion**: git SSH URLs (`git@github.com:` / `ssh://git@github.com/`)
 > are rewritten to HTTPS via `GIT_CONFIG` env vars, authenticated via `GIT_ASKPASS`
 > with `GH_TOKEN`. This allows git operations without SSH keys.
