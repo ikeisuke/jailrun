@@ -36,7 +36,7 @@ CONF
   [[ "$output" == *'(deny mach-lookup (global-name "com.apple.security.authtrampoline"))'* ]]
 }
 
-@test "exec.sh contains sandbox-exec and env unsets" {
+@test "exec.sh contains sandbox-exec and env setup" {
   setup_jailrun_env
 
   run env -u _CREDENTIAL_GUARD_SANDBOXED sh -c '
@@ -59,10 +59,11 @@ CONF
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"sandbox-exec"* ]]
-  [[ "$output" == *"-u AWS_ACCESS_KEY_ID"* ]]
-  [[ "$output" == *"-u GH_TOKEN"* ]]
-  [[ "$output" == *"_CREDENTIAL_GUARD_SANDBOXED=1"* ]]
-  [[ "$output" == *"SSH_AUTH_SOCK="* ]]
+  # env vars are set via unset/export (not env -u/-E) to hide secrets from ps
+  [[ "$output" == *"unset AWS_ACCESS_KEY_ID"* ]]
+  [[ "$output" == *"unset GH_TOKEN"* ]]
+  [[ "$output" == *'export _CREDENTIAL_GUARD_SANDBOXED="1"'* ]]
+  [[ "$output" == *'export SSH_AUTH_SOCK=""'* ]]
   # DBUS_SESSION_BUS_ADDRESS unset is Linux-only (systemd-run)
   # On macOS, keychain is blocked via Seatbelt mach-lookup deny instead
 }

@@ -135,6 +135,16 @@ _build_env_spec() {
   } > "$_spec"
 }
 
+# generate systemd EnvironmentFile from env-spec
+_build_systemd_envfile() {
+  local _envfile="$_tmpdir/env-systemd"
+  while IFS= read -r _line; do
+    case "$_line" in
+      SET\ *) printf '%s\n' "${_line#SET }" ;;
+    esac
+  done < "$_tmpdir/env-spec" > "$_envfile"
+}
+
 # generate exec.sh: env setup + sandbox command + exec
 _build_exec_script() {
   local _script="$_tmpdir/exec.sh"
@@ -144,24 +154,26 @@ _build_exec_script() {
     echo '#!/bin/sh'
     # set terminal title to agent name (avoids WezTerm showing full sandbox command)
     printf 'printf '\''\\033]0;jailrun %%s\\007'\'' "${1##*/}"\n'
+    # emit unset/export from env-spec (hides secrets from ps argv)
+    while IFS= read -r _line; do
+      case "$_line" in
+        UNSET\ *) printf 'unset %s\n' "${_line#UNSET }" ;;
+        SET\ *)
+          _envpair="${_line#SET }"
+          _envkey="${_envpair%%=*}"
+          _envval="${_envpair#*=}"
+          printf 'export %s="%s"\n' "$_envkey" "$_envval"
+          ;;
+      esac
+    done < "$_tmpdir/env-spec"
     case "$_sandbox_cmd" in
       systemd-run)
-        # Linux: unset via env -u, set via systemd-run -E
-        printf 'exec env \\\n'
-        while IFS= read -r _line; do
-          case "$_line" in
-            UNSET\ *) printf '  -u %s \\\n' "${_line#UNSET }" ;;
-          esac
-        done < "$_tmpdir/env-spec"
-        printf '  systemd-run \\\n'
+        # Linux: pass env via EnvironmentFile (not -E argv)
+        _build_systemd_envfile
+        printf 'exec systemd-run \\\n'
         printf '  --user --pty --wait --collect --same-dir \\\n'
+        printf '  -p "EnvironmentFile=%s/env-systemd" \\\n' "$_tmpdir"
         while IFS= read -r _line; do
-          case "$_line" in
-            SET\ *) printf '  -E "%s" \\\n' "${_line#SET }" ;;
-          esac
-        done < "$_tmpdir/env-spec"
-        while IFS= read -r _line; do
-          # Quote each property arg to preserve spaces (e.g. DeviceAllow=/dev/null rw)
           case "$_line" in
             -p\ *) printf '  -p "%s" \\\n' "${_line#-p }" ;;
             *)     printf '  %s \\\n' "$_line" ;;
@@ -170,15 +182,8 @@ _build_exec_script() {
         echo '  -- "$@"'
         ;;
       *)
-        # Darwin / no sandbox: env with all vars
-        printf 'exec env \\\n'
-        while IFS= read -r _line; do
-          case "$_line" in
-            UNSET\ *) printf '  -u %s \\\n' "${_line#UNSET }" ;;
-            SET\ *)   printf '  "%s" \\\n' "${_line#SET }" ;;
-          esac
-        done < "$_tmpdir/env-spec"
-        printf '  %s "$@"\n' "$_sandbox_cmd"
+        # Darwin / no sandbox
+        printf 'exec %s "$@"\n' "$_sandbox_cmd"
         ;;
     esac
   } > "$_script"
