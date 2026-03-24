@@ -31,6 +31,9 @@ CONF
   [[ "$output" == *".ssh"* ]]
   [[ "$output" == *".gnupg"* ]]
   [[ "$output" == *"(deny file-write*"* ]]
+  # Keychain access should be blocked
+  [[ "$output" == *'(deny mach-lookup (global-name "com.apple.SecurityServer"))'* ]]
+  [[ "$output" == *'(deny mach-lookup (global-name "com.apple.security.authtrampoline"))'* ]]
 }
 
 @test "exec.sh contains sandbox-exec and env unsets" {
@@ -60,4 +63,6 @@ CONF
   [[ "$output" == *"-u GH_TOKEN"* ]]
   [[ "$output" == *"_CREDENTIAL_GUARD_SANDBOXED=1"* ]]
   [[ "$output" == *"SSH_AUTH_SOCK="* ]]
+  # DBUS_SESSION_BUS_ADDRESS unset is Linux-only (systemd-run)
+  # On macOS, keychain is blocked via Seatbelt mach-lookup deny instead
 }

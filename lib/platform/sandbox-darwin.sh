@@ -18,6 +18,10 @@ _setup_sandbox() {
     echo '(version 1)'
     echo '(allow default)'
     echo ''
+    echo ';; Block keychain access (credential extraction via security command)'
+    echo '(deny mach-lookup (global-name "com.apple.SecurityServer"))'
+    echo '(deny mach-lookup (global-name "com.apple.security.authtrampoline"))'
+    echo ''
     echo ';; Deny read access to sensitive directories'
     echo '(deny file-read*'
     _OLD_IFS="$IFS"; IFS="
