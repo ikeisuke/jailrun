@@ -170,7 +170,9 @@ _build_exec_script() {
       systemd-run)
         # Linux: pass env via EnvironmentFile (not -E argv)
         _build_systemd_envfile
-        printf 'exec systemd-run \\\n'
+        # no exec: keep exec.sh alive to maintain OSC terminal title
+        # (systemd-run --pty allocates a new PTY that resets WezTerm's title tracking)
+        printf 'systemd-run \\\n'
         printf '  --user --pty --wait --collect --same-dir \\\n'
         printf '  -p "EnvironmentFile=%s/env-systemd" \\\n' "$_tmpdir"
         while IFS= read -r _line; do
