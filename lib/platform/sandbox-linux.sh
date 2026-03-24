@@ -68,6 +68,11 @@ _setup_sandbox() {
     echo '-p UMask=0077'
     echo '-p CoredumpFilter=0'
     echo '-p KeyringMode=private'
+    # Block D-Bus session bus (prevents GNOME Keyring / secret-tool access)
+    _xdg_runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [ -S "$_xdg_runtime/bus" ]; then
+      echo "-p InaccessiblePaths=$_xdg_runtime/bus"
+    fi
     # Explicit write protection for config directory
     echo "-p ReadOnlyPaths=${CONFIG_DIR:-$HOME/.config/jailrun}"
 

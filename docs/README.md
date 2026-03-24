@@ -209,7 +209,7 @@ The sandbox blocks direct access to OS credential stores:
 | Platform | Mechanism |
 |----------|-----------|
 | macOS | Seatbelt denies `mach-lookup` for `com.apple.SecurityServer` |
-| Linux | `DBUS_SESSION_BUS_ADDRESS` is unset, blocking GNOME Keyring via D-Bus |
+| Linux | D-Bus session bus socket made inaccessible via `InaccessiblePaths` |
 
 Tokens are injected as env vars before sandbox exec, so keychain access is
 not needed — and now not possible — from within the sandbox.

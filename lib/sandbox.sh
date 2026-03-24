@@ -74,12 +74,6 @@ _build_env_spec() {
     echo 'UNSET AWS_ROLE_SESSION_NAME'
     echo 'UNSET GH_TOKEN'
     echo 'UNSET GITHUB_TOKEN'
-    # Block GNOME Keyring access on Linux (only when sandbox is active)
-    # Use SET (empty) instead of UNSET so systemd-run client keeps D-Bus access
-    # while the spawned unit has it cleared
-    if [ "$_sandbox_cmd" = "systemd-run" ]; then
-      echo 'SET DBUS_SESSION_BUS_ADDRESS='
-    fi
     printf 'SET AWS_CONFIG_FILE=%s\n' "$_aws_config"
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
     printf 'SET GH_CONFIG_DIR=%s/gh\n' "$_tmpdir"
@@ -108,8 +102,7 @@ _build_env_spec() {
         AWS_PROFILE|AWS_DEFAULT_PROFILE|AWS_ROLE_ARN|AWS_ROLE_SESSION_NAME|\
         AWS_CONFIG_FILE|AWS_SHARED_CREDENTIALS_FILE|\
         GH_TOKEN|GITHUB_TOKEN|GH_CONFIG_DIR|\
-        SSH_AUTH_SOCK|DBUS_SESSION_BUS_ADDRESS|\
-        PATH|GIT_ASKPASS|GIT_TERMINAL_PROMPT|\
+        SSH_AUTH_SOCK|PATH|GIT_ASKPASS|GIT_TERMINAL_PROMPT|\
         GIT_CONFIG_COUNT|GIT_CONFIG_KEY_*|GIT_CONFIG_VALUE_*|\
         _CREDENTIAL_GUARD_SANDBOXED)
           echo "[$_WRAPPER_NAME] WARN: ignoring reserved variable in SANDBOX_PASSTHROUGH_ENV: $_var" >&2
