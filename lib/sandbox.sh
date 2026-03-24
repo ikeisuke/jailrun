@@ -183,21 +183,11 @@ _build_exec_script() {
   chmod +x "$_script"
 }
 
-_schedule_cleanup() {
-  (
-    while kill -0 $$ 2>/dev/null; do
-      sleep 5
-    done
-    rm -rf "$_tmpdir"
-  ) &
-}
-
 credential_guard_sandbox_exec() {
   if [ -z "${_CREDENTIAL_GUARD_SANDBOXED:-}" ]; then
     _setup_sandbox
   fi
   _build_exec_script
-  _schedule_cleanup
   [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$_WRAPPER_NAME] exec: $_sandbox_cmd $*" >&2
   exec "$_tmpdir/exec.sh" "$@"
 }
