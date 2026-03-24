@@ -69,10 +69,25 @@ _setup_sandbox() {
     echo '-p CoredumpFilter=0'
     echo '-p KeyringMode=private'
     # Block D-Bus session bus (prevents GNOME Keyring / secret-tool access)
-    _xdg_runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-    if [ -S "$_xdg_runtime/bus" ]; then
+    # 1. Block default XDG user bus socket
+    _xdg_runtime="${XDG_RUNTIME_DIR:-}"
+    if [ -n "$_xdg_runtime" ] && [ -S "$_xdg_runtime/bus" ]; then
       echo "-p InaccessiblePaths=$_xdg_runtime/bus"
     fi
+    # 2. Block socket from DBUS_SESSION_BUS_ADDRESS if it's a file-based socket
+    _dbus_addr="${DBUS_SESSION_BUS_ADDRESS:-}"
+    case "$_dbus_addr" in
+      unix:path=*)
+        _dbus_sock="${_dbus_addr#unix:path=}"
+        _dbus_sock="${_dbus_sock%%,*}"
+        if [ -S "$_dbus_sock" ]; then
+          echo "-p InaccessiblePaths=$_dbus_sock"
+        fi ;;
+      unix:abstract=*|"")
+        # Abstract sockets can't be blocked via InaccessiblePaths;
+        # clear the address inside the sandbox as fallback
+        _DBUS_NEEDS_ENV_CLEAR=1 ;;
+    esac
     # Explicit write protection for config directory
     echo "-p ReadOnlyPaths=${CONFIG_DIR:-$HOME/.config/jailrun}"
 

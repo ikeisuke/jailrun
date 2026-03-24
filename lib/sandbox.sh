@@ -74,6 +74,10 @@ _build_env_spec() {
     echo 'UNSET AWS_ROLE_SESSION_NAME'
     echo 'UNSET GH_TOKEN'
     echo 'UNSET GITHUB_TOKEN'
+    # Fallback: clear D-Bus address for abstract sockets (can't use InaccessiblePaths)
+    if [ "${_DBUS_NEEDS_ENV_CLEAR:-}" = "1" ]; then
+      echo 'UNSET DBUS_SESSION_BUS_ADDRESS'
+    fi
     printf 'SET AWS_CONFIG_FILE=%s\n' "$_aws_config"
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
     printf 'SET GH_CONFIG_DIR=%s/gh\n' "$_tmpdir"
@@ -102,7 +106,8 @@ _build_env_spec() {
         AWS_PROFILE|AWS_DEFAULT_PROFILE|AWS_ROLE_ARN|AWS_ROLE_SESSION_NAME|\
         AWS_CONFIG_FILE|AWS_SHARED_CREDENTIALS_FILE|\
         GH_TOKEN|GITHUB_TOKEN|GH_CONFIG_DIR|\
-        SSH_AUTH_SOCK|PATH|GIT_ASKPASS|GIT_TERMINAL_PROMPT|\
+        SSH_AUTH_SOCK|DBUS_SESSION_BUS_ADDRESS|\
+        PATH|GIT_ASKPASS|GIT_TERMINAL_PROMPT|\
         GIT_CONFIG_COUNT|GIT_CONFIG_KEY_*|GIT_CONFIG_VALUE_*|\
         _CREDENTIAL_GUARD_SANDBOXED)
           echo "[$_WRAPPER_NAME] WARN: ignoring reserved variable in SANDBOX_PASSTHROUGH_ENV: $_var" >&2
