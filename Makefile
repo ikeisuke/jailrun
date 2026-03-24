@@ -22,6 +22,7 @@ install:
 	install -m 755 lib/shims/codex $(PREFIX)/lib/jailrun/shims/codex
 	install -m 755 lib/token.sh $(PREFIX)/lib/jailrun/token.sh
 	install -m 755 lib/ruleset.sh $(PREFIX)/lib/jailrun/ruleset.sh
+	install -m 755 lib/config-cmd.sh $(PREFIX)/lib/jailrun/config-cmd.sh
 
 test:
 	bats tests/
