@@ -42,6 +42,14 @@ _setup_aws_credentials() {
     _load_profiles="$_filtered_profiles"
   fi
 
+  # When AGENT_AWS_PROFILES overrides, align DEFAULT_AWS_PROFILE to first loaded profile
+  if [ -n "${AGENT_AWS_PROFILES:-}" ] && [ -n "$_load_profiles" ]; then
+    for _p in $_load_profiles; do
+      DEFAULT_AWS_PROFILE="$_p"
+      break
+    done
+  fi
+
   local _default_written=false
   local _default_ak="" _default_sk="" _default_st="" _default_region=""
 
