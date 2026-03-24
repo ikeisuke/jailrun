@@ -75,8 +75,10 @@ _build_env_spec() {
     echo 'UNSET GH_TOKEN'
     echo 'UNSET GITHUB_TOKEN'
     # Block GNOME Keyring access on Linux (only when sandbox is active)
+    # Use SET (empty) instead of UNSET so systemd-run client keeps D-Bus access
+    # while the spawned unit has it cleared
     if [ "$_sandbox_cmd" = "systemd-run" ]; then
-      echo 'UNSET DBUS_SESSION_BUS_ADDRESS'
+      echo 'SET DBUS_SESSION_BUS_ADDRESS='
     fi
     printf 'SET AWS_CONFIG_FILE=%s\n' "$_aws_config"
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
