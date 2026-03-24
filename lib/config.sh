@@ -73,4 +73,13 @@ CONF
   exit 1
 fi
 
-DEFAULT_AWS_PROFILE="${AWS_PROFILE:-$DEFAULT_AWS_PROFILE}"
+# When AGENT_AWS_PROFILES is set, use its first entry as the default profile
+if [ -n "${AGENT_AWS_PROFILES:-}" ]; then
+  # Extract first profile from space-separated list
+  for _p in $AGENT_AWS_PROFILES; do
+    DEFAULT_AWS_PROFILE="$_p"
+    break
+  done
+else
+  DEFAULT_AWS_PROFILE="${AWS_PROFILE:-$DEFAULT_AWS_PROFILE}"
+fi
