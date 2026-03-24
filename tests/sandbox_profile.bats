@@ -63,6 +63,6 @@ CONF
   [[ "$output" == *"-u GH_TOKEN"* ]]
   [[ "$output" == *"_CREDENTIAL_GUARD_SANDBOXED=1"* ]]
   [[ "$output" == *"SSH_AUTH_SOCK="* ]]
-  # DBUS_SESSION_BUS_ADDRESS should be unset (Linux keyring blocking)
-  [[ "$output" == *"-u DBUS_SESSION_BUS_ADDRESS"* ]]
+  # DBUS_SESSION_BUS_ADDRESS unset is Linux-only (systemd-run)
+  # On macOS, keychain is blocked via Seatbelt mach-lookup deny instead
 }
