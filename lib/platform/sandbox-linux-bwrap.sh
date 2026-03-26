@@ -120,10 +120,15 @@ _setup_sandbox() {
     echo "${CONFIG_DIR:-$HOME/.config/jailrun}"
     echo "${CONFIG_DIR:-$HOME/.config/jailrun}"
 
-    # Isolation options
+    # Isolation options (matching systemd-run backend)
     echo '--unshare-ipc'
-    echo '--new-session'
+    echo '--unshare-uts'
+    # NOTE: --new-session omitted to preserve job control (Ctrl+Z)
     echo '--die-with-parent'
+
+    # Prevent privilege escalation (equivalent to NoNewPrivileges=yes)
+    echo '--cap-drop'
+    echo 'ALL'
   } > "$_args"
 }
 
@@ -138,9 +143,9 @@ _build_sandbox_exec() {
         IFS= read -r _dst
         printf '  %s "%s" "%s" \\\n' "$_line" "$_src" "$_dst"
         ;;
-      --tmpfs|--dev|--proc)
+      --tmpfs|--dev|--proc|--cap-drop)
         IFS= read -r _path
-        printf '  %s "%s" \\\n' "$_line" "$_path"
+        printf '  %s %s \\\n' "$_line" "$_path"
         ;;
       *)
         printf '  %s \\\n' "$_line"
