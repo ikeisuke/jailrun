@@ -9,6 +9,7 @@
 
 _setup_sandbox() {
   local _cwd="$PWD"
+  _detect_git_worktree
 
   _sandbox_cmd="systemd-run"
   local _props="$_tmpdir/systemd-props"
