@@ -20,6 +20,7 @@ install:
 	install -m 644 lib/platform/sandbox-darwin.sh $(PREFIX)/lib/jailrun/platform/sandbox-darwin.sh
 	install -m 644 lib/platform/sandbox-linux.sh $(PREFIX)/lib/jailrun/platform/sandbox-linux.sh
 	install -m 644 lib/platform/sandbox-linux-systemd.sh $(PREFIX)/lib/jailrun/platform/sandbox-linux-systemd.sh
+	install -m 644 lib/platform/sandbox-linux-bwrap.sh $(PREFIX)/lib/jailrun/platform/sandbox-linux-bwrap.sh
 	install -m 755 lib/shims/codex $(PREFIX)/lib/jailrun/shims/codex
 	install -m 755 lib/token.sh $(PREFIX)/lib/jailrun/token.sh
 	install -m 755 lib/ruleset.sh $(PREFIX)/lib/jailrun/ruleset.sh

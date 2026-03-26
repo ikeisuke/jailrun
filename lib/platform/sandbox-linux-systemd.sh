@@ -130,8 +130,9 @@ _build_systemd_envfile() {
 # Write sandbox exec command to stdout (appended to exec.sh)
 _build_sandbox_exec() {
   _build_systemd_envfile
+  # --pty allocates a new PTY, so set OSC title from inside the PTY
   printf 'exec systemd-run \\\n'
-  printf '  --user --pipe --wait --collect --same-dir \\\n'
+  printf '  --user --pty --wait --collect --same-dir \\\n'
   printf '  -p "EnvironmentFile=%s/env-systemd" \\\n' "$_tmpdir"
   while IFS= read -r _line; do
     case "$_line" in
@@ -139,5 +140,5 @@ _build_sandbox_exec() {
       *)     printf '  %s \\\n' "$_line" ;;
     esac
   done < "$_tmpdir/systemd-props"
-  echo '  -- "$@"'
+  echo '  -- sh -c '\''printf "\\033]0;jailrun %s\\007" "${1##*/}"; exec "$@"'\'' _ "$@"'
 }

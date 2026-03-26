@@ -7,11 +7,9 @@
 
 . "$JAILRUN_LIB/platform/git-worktree.sh"
 
-# TODO: bwrap support (issue #18)
-# if command -v bwrap >/dev/null 2>&1; then
-#   . "$JAILRUN_LIB/platform/sandbox-linux-bwrap.sh"
-# elif ...
-if command -v systemd-run >/dev/null 2>&1; then
+if command -v bwrap >/dev/null 2>&1; then
+  . "$JAILRUN_LIB/platform/sandbox-linux-bwrap.sh"
+elif command -v systemd-run >/dev/null 2>&1; then
   . "$JAILRUN_LIB/platform/sandbox-linux-systemd.sh"
 else
   _setup_sandbox() {
