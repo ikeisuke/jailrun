@@ -1,10 +1,10 @@
 #!/bin/sh
-# macOS Seatbelt sandbox construction
-# Sourced by credential-guard.sh
+# macOS Seatbelt sandbox backend
+# Sourced by sandbox.sh
 #
 # Requires: $_tmpdir, $_SANDBOX_DENY_READ_PATHS, $_SANDBOX_ALLOW_WRITE_PATHS,
 #           $_SANDBOX_ALLOW_WRITE_FILES to be set (newline-separated)
-# Outputs: _setup_sandbox() function (sets _sandbox_cmd)
+# Provides: _setup_sandbox(), _build_sandbox_exec()
 
 . "$JAILRUN_LIB/platform/git-worktree.sh"
 
@@ -76,4 +76,9 @@ _setup_sandbox() {
     fi
   } > "$_sb"
   _sandbox_cmd="sandbox-exec -f $_sb"
+}
+
+# Write sandbox exec command to stdout (appended to exec.sh)
+_build_sandbox_exec() {
+  printf 'exec %s "$@"\n' "$_sandbox_cmd"
 }

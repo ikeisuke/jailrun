@@ -31,9 +31,8 @@ CONF
   [[ "$output" == *".ssh"* ]]
   [[ "$output" == *".gnupg"* ]]
   [[ "$output" == *"(deny file-write*"* ]]
-  # Keychain access should be blocked
-  [[ "$output" == *'(deny mach-lookup (global-name "com.apple.SecurityServer"))'* ]]
-  [[ "$output" == *'(deny mach-lookup (global-name "com.apple.security.authtrampoline"))'* ]]
+  # Keychain access is intentionally allowed (apps need it for token refresh)
+  [[ "$output" != *'(deny mach-lookup (global-name "com.apple.SecurityServer"))'* ]]
 }
 
 @test "exec.sh contains sandbox-exec and env setup" {

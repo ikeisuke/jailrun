@@ -83,7 +83,7 @@ _build_env_spec() {
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
     printf 'SET GH_CONFIG_DIR=%s/gh\n' "$_tmpdir"
     echo 'SET SSH_AUTH_SOCK='
-    # Provide CA certs via file (macOS Seatbelt blocks Security framework)
+    # Provide CA certs via file for environments where native cert store is unavailable
     if [ -f /etc/ssl/cert.pem ]; then
       echo 'SET SSL_CERT_FILE=/etc/ssl/cert.pem'
     fi
@@ -139,16 +139,6 @@ _build_env_spec() {
   } > "$_spec"
 }
 
-# generate systemd EnvironmentFile from env-spec
-_build_systemd_envfile() {
-  local _envfile="$_tmpdir/env-systemd"
-  while IFS= read -r _line; do
-    case "$_line" in
-      SET\ *) printf '%s\n' "${_line#SET }" ;;
-    esac
-  done < "$_tmpdir/env-spec" > "$_envfile"
-}
-
 # generate exec.sh: env setup + sandbox command + exec
 _build_exec_script() {
   local _script="$_tmpdir/exec.sh"
@@ -170,28 +160,12 @@ _build_exec_script() {
           ;;
       esac
     done < "$_tmpdir/env-spec"
-    case "$_sandbox_cmd" in
-      systemd-run)
-        # Linux: pass env via EnvironmentFile (not -E argv)
-        _build_systemd_envfile
-        # Use --pipe instead of --pty to preserve parent terminal's job control
-        # OSC title set in outer exec.sh is preserved (no new PTY allocation)
-        printf 'exec systemd-run \\\n'
-        printf '  --user --pipe --wait --collect --same-dir \\\n'
-        printf '  -p "EnvironmentFile=%s/env-systemd" \\\n' "$_tmpdir"
-        while IFS= read -r _line; do
-          case "$_line" in
-            -p\ *) printf '  -p "%s" \\\n' "${_line#-p }" ;;
-            *)     printf '  %s \\\n' "$_line" ;;
-          esac
-        done < "$_tmpdir/systemd-props"
-        echo '  -- "$@"'
-        ;;
-      *)
-        # Darwin / no sandbox
-        printf 'exec %s "$@"\n' "$_sandbox_cmd"
-        ;;
-    esac
+    # Append platform-specific sandbox exec (provided by backend)
+    if type _build_sandbox_exec >/dev/null 2>&1; then
+      _build_sandbox_exec
+    else
+      printf 'exec "$@"\n'
+    fi
   } > "$_script"
   chmod +x "$_script"
 }
