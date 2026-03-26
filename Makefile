@@ -26,6 +26,7 @@ install:
 	install -m 755 lib/ruleset.sh $(PREFIX)/lib/jailrun/ruleset.sh
 	install -m 644 lib/config-defaults.sh $(PREFIX)/lib/jailrun/config-defaults.sh
 	install -m 755 lib/config-cmd.sh $(PREFIX)/lib/jailrun/config-cmd.sh
+	install -m 644 lib/config.py $(PREFIX)/lib/jailrun/config.py
 
 test:
 	bats tests/

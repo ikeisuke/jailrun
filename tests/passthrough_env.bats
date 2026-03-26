@@ -7,10 +7,11 @@ setup() {
   TEST_CONFIG_DIR=$(mktemp -d)
   export XDG_CONFIG_HOME="$TEST_CONFIG_DIR"
   mkdir -p "$TEST_CONFIG_DIR/jailrun"
-  cat > "$TEST_CONFIG_DIR/jailrun/config" <<CONF
-ALLOWED_AWS_PROFILES=""
-DEFAULT_AWS_PROFILE=""
-GH_TOKEN_NAME="classic"
+  cat > "$TEST_CONFIG_DIR/jailrun/config.toml" <<CONF
+[global]
+allowed_aws_profiles = []
+default_aws_profile = ""
+gh_token_name = "classic"
 CONF
 }
 

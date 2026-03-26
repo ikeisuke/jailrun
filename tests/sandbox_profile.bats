@@ -11,10 +11,11 @@ load helpers
     export WRAPPER_NAME=claude
     export XDG_CONFIG_HOME="'"$(mktemp -d)"'"
     mkdir -p "$XDG_CONFIG_HOME/jailrun"
-    cat > "$XDG_CONFIG_HOME/jailrun/config" <<CONF
-ALLOWED_AWS_PROFILES=""
-DEFAULT_AWS_PROFILE=""
-GH_TOKEN_NAME="classic"
+    cat > "$XDG_CONFIG_HOME/jailrun/config.toml" <<CONF
+[global]
+allowed_aws_profiles = []
+default_aws_profile = ""
+gh_token_name = "classic"
 CONF
     . "$JAILRUN_LIB/config.sh"
     . "$JAILRUN_LIB/credentials.sh"
@@ -43,10 +44,11 @@ CONF
     export WRAPPER_NAME=claude
     export XDG_CONFIG_HOME="'"$(mktemp -d)"'"
     mkdir -p "$XDG_CONFIG_HOME/jailrun"
-    cat > "$XDG_CONFIG_HOME/jailrun/config" <<CONF
-ALLOWED_AWS_PROFILES=""
-DEFAULT_AWS_PROFILE=""
-GH_TOKEN_NAME="classic"
+    cat > "$XDG_CONFIG_HOME/jailrun/config.toml" <<CONF
+[global]
+allowed_aws_profiles = []
+default_aws_profile = ""
+gh_token_name = "classic"
 CONF
     . "$JAILRUN_LIB/config.sh"
     . "$JAILRUN_LIB/credentials.sh"
@@ -63,6 +65,4 @@ CONF
   [[ "$output" == *"unset GH_TOKEN"* ]]
   [[ "$output" == *'export _CREDENTIAL_GUARD_SANDBOXED="1"'* ]]
   [[ "$output" == *'export SSH_AUTH_SOCK=""'* ]]
-  # DBUS_SESSION_BUS_ADDRESS unset is Linux-only (systemd-run)
-  # On macOS, keychain is blocked via Seatbelt mach-lookup deny instead
 }
