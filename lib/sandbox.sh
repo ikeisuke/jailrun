@@ -174,10 +174,10 @@ _build_exec_script() {
       systemd-run)
         # Linux: pass env via EnvironmentFile (not -E argv)
         _build_systemd_envfile
-        # exec into systemd-run; set OSC title from INSIDE the PTY
-        # (--pty allocates a new PTY, so outer OSC is lost)
+        # Use --pipe instead of --pty to preserve parent terminal's job control
+        # OSC title set in outer exec.sh is preserved (no new PTY allocation)
         printf 'exec systemd-run \\\n'
-        printf '  --user --pty --wait --collect --same-dir \\\n'
+        printf '  --user --pipe --wait --collect --same-dir \\\n'
         printf '  -p "EnvironmentFile=%s/env-systemd" \\\n' "$_tmpdir"
         while IFS= read -r _line; do
           case "$_line" in
@@ -185,7 +185,7 @@ _build_exec_script() {
             *)     printf '  %s \\\n' "$_line" ;;
           esac
         done < "$_tmpdir/systemd-props"
-        echo '  -- sh -c '\''printf "\\033]0;jailrun %s\\007" "${1##*/}"; exec "$@"'\'' _ "$@"'
+        echo '  -- "$@"'
         ;;
       *)
         # Darwin / no sandbox
