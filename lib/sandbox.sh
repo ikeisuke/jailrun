@@ -175,6 +175,11 @@ credential_guard_sandbox_exec() {
     _setup_sandbox
   fi
   _build_exec_script
+  if [ -n "$_sandbox_cmd" ]; then
+    echo "[$_WRAPPER_NAME] sandbox: $_sandbox_cmd" >&2
+  else
+    echo "[$_WRAPPER_NAME] sandbox: none" >&2
+  fi
   [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$_WRAPPER_NAME] exec: $_sandbox_cmd $*" >&2
   exec "$_tmpdir/exec.sh" "$@"
 }
