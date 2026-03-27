@@ -10,10 +10,6 @@
 if command -v systemd-run >/dev/null 2>&1; then
   . "$JAILRUN_LIB/platform/sandbox-linux-systemd.sh"
 else
-  _setup_sandbox() {
-    echo "[$_WRAPPER_NAME] WARN: no sandbox backend available (install systemd), launching without sandbox" >&2
-  }
-  _build_sandbox_exec() {
-    printf 'exec "$@"\n'
-  }
+  echo "[$_WRAPPER_NAME] ERROR: systemd-run not found. Cannot launch without sandbox." >&2
+  exit 1
 fi
