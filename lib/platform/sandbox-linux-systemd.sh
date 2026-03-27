@@ -111,7 +111,7 @@ _setup_sandbox() {
     _OLD_IFS="$IFS"; IFS="
 "
     for _p in $_SANDBOX_ALLOW_WRITE_PATHS; do
-      mkdir -p "$_p" 2>/dev/null || true
+      [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
       echo "-p ReadWritePaths=$_p"
     done
 
