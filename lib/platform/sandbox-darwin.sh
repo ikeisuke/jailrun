@@ -23,6 +23,14 @@ _setup_sandbox() {
     echo ';; sandboxed apps from refreshing their own auth tokens.'
     echo ';; GitHub PAT is protected by file-read deny rules instead.'
     echo ''
+    # When proxy is enabled, restrict network to localhost only
+    if [ "${PROXY_ENABLED:-false}" = "true" ] || [ "${PROXY_ENABLED:-0}" = "1" ]; then
+      echo ';; Network: localhost only (proxy handles domain filtering)'
+      echo '(deny network-outbound (require-not (require-any'
+      echo '  (remote ip "localhost:*")'
+      echo '  (remote unix-socket))))'
+    fi
+    echo ''
     echo ';; Deny read access to sensitive directories'
     echo '(deny file-read*'
     _OLD_IFS="$IFS"; IFS="

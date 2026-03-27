@@ -35,6 +35,12 @@ _setup_sandbox() {
     # Network
     echo '-p PrivateNetwork=no'
     echo '-p RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6'
+    # When proxy is enabled, restrict to localhost only (proxy handles filtering)
+    if [ "${PROXY_ENABLED:-false}" = "true" ] || [ "${PROXY_ENABLED:-0}" = "1" ]; then
+      echo '-p IPAddressDeny=any'
+      echo '-p IPAddressAllow=127.0.0.0/8'
+      echo '-p IPAddressAllow=::1/128'
+    fi
     # Filesystem
     echo '-p ProtectSystem=strict'
     echo '-p ProtectHome=read-only'
