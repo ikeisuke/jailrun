@@ -7,6 +7,8 @@
 # exports: credential_guard_sandbox_exec()
 
 # --- sandbox path lists (newline-separated) ---
+# Contract: _SANDBOX_ALLOW_WRITE_PATHS contains only existing directories.
+# Platform backends may rely on this guarantee (e.g. systemd ReadWritePaths).
 _SANDBOX_DENY_READ_PATHS="$HOME/.aws
 $HOME/.config/gh
 $HOME/.gnupg
@@ -44,6 +46,7 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
   case "$_p" in
     "~"*) _p="$HOME${_p#"~"}" ;;
   esac
+  [ -d "$_p" ] || continue
   _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
 $_p"
 done
