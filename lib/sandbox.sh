@@ -22,6 +22,7 @@ $_p"
 done
 
 _SANDBOX_ALLOW_WRITE_PATHS=""
+# Cross-platform paths: create if missing (safe to mkdir)
 for _p in \
   "$HOME/.claude" \
   "$HOME/.codex" \
@@ -33,12 +34,19 @@ for _p in \
   "$HOME/.npm" \
   "$HOME/.config/claude" \
   "$HOME/.config/codex" \
-  "$HOME/.config/kiro" \
+  "$HOME/.config/kiro"
+do
+  [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
+  _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
+$_p"
+done
+# Platform-specific paths: add only if they already exist
+for _p in \
   "$HOME/Library/Application Support/Claude" \
   "$HOME/Library/Application Support/Codex" \
   "$HOME/Library/Application Support/kiro-cli"
 do
-  [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
+  [ -d "$_p" ] || continue
   _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
 $_p"
 done
