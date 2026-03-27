@@ -29,7 +29,10 @@ $HOME/.cache
 $HOME/.npm
 $HOME/.config/claude
 $HOME/.config/codex
-$HOME/.config/kiro"
+$HOME/.config/kiro
+$HOME/Library/Application Support/Claude
+$HOME/Library/Application Support/Codex
+$HOME/Library/Application Support/kiro-cli"
 for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
   case "$_p" in
     "~"*) _p="$HOME${_p#"~"}" ;;
