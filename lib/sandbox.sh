@@ -19,20 +19,27 @@ for _p in $SANDBOX_EXTRA_DENY_READ; do
 $_p"
 done
 
-_SANDBOX_ALLOW_WRITE_PATHS="$HOME/.claude
-$HOME/.codex
-$HOME/.kiro
-$HOME/.gemini
-$HOME/.local/share
-$HOME/.local/state
-$HOME/.cache
-$HOME/.npm
-$HOME/.config/claude
-$HOME/.config/codex
-$HOME/.config/kiro
-$HOME/Library/Application Support/Claude
-$HOME/Library/Application Support/Codex
-$HOME/Library/Application Support/kiro-cli"
+_SANDBOX_ALLOW_WRITE_PATHS=""
+for _p in \
+  "$HOME/.claude" \
+  "$HOME/.codex" \
+  "$HOME/.kiro" \
+  "$HOME/.gemini" \
+  "$HOME/.local/share" \
+  "$HOME/.local/state" \
+  "$HOME/.cache" \
+  "$HOME/.npm" \
+  "$HOME/.config/claude" \
+  "$HOME/.config/codex" \
+  "$HOME/.config/kiro" \
+  "$HOME/Library/Application Support/Claude" \
+  "$HOME/Library/Application Support/Codex" \
+  "$HOME/Library/Application Support/kiro-cli"
+do
+  [ -d "$_p" ] || continue
+  _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
+$_p"
+done
 for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
   case "$_p" in
     "~"*) _p="$HOME${_p#"~"}" ;;
