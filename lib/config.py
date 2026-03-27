@@ -44,6 +44,8 @@ DEFAULTS: dict = {
     "sandbox_extra_allow_write": [],
     "sandbox_extra_allow_write_files": [],
     "sandbox_passthrough_env": [],
+    "proxy_enabled": False,
+    "proxy_allow_domains": [],
 }
 
 LIST_KEYS = {
@@ -52,6 +54,7 @@ LIST_KEYS = {
     "sandbox_extra_allow_write",
     "sandbox_extra_allow_write_files",
     "sandbox_passthrough_env",
+    "proxy_allow_domains",
 }
 
 KNOWN_KEYS = set(DEFAULTS.keys())
@@ -77,6 +80,10 @@ default_aws_profile = "default"
 
 # environment variables to pass through to sandbox
 # sandbox_passthrough_env = ["ANTHROPIC_API_KEY"]
+
+# --- Network proxy (HTTPS CONNECT with domain allowlist) ---
+# proxy_enabled = false
+# proxy_allow_domains = ["api.anthropic.com", "api.openai.com", "github.com"]
 
 # --- Profiles ---
 # [profile.restricted]

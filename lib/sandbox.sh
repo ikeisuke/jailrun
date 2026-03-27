@@ -170,16 +170,76 @@ _build_exec_script() {
   chmod +x "$_script"
 }
 
+_start_proxy() {
+  # Read proxy config from TOML (already eval'd into shell vars)
+  if [ "${PROXY_ENABLED:-false}" != "true" ] && [ "${PROXY_ENABLED:-false}" != "1" ]; then
+    return
+  fi
+  if [ -z "${PROXY_ALLOW_DOMAINS:-}" ]; then
+    echo "[$_WRAPPER_NAME] WARN: proxy enabled but no proxy_allow_domains configured, skipping" >&2
+    return
+  fi
+
+  # Convert space-separated to comma-separated for proxy.py
+  _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
+
+  # Start proxy, capture port from first stdout line via FIFO
+  _fifo="$_tmpdir/proxy-port"
+  mkfifo "$_fifo"
+  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" > "$_fifo" &
+  _proxy_pid=$!
+  read -r _proxy_port < "$_fifo"
+  rm -f "$_fifo"
+
+  if [ -z "$_proxy_port" ] || ! kill -0 "$_proxy_pid" 2>/dev/null; then
+    echo "[$_WRAPPER_NAME] ERROR: failed to start proxy" >&2
+    return
+  fi
+
+  echo "[$_WRAPPER_NAME] proxy: 127.0.0.1:$_proxy_port (pid $_proxy_pid)" >&2
+  _PROXY_PORT="$_proxy_port"
+  _PROXY_PID="$_proxy_pid"
+}
+
 credential_guard_sandbox_exec() {
   if [ -z "${_CREDENTIAL_GUARD_SANDBOXED:-}" ]; then
     _setup_sandbox
   fi
+
+  # Start proxy if enabled
+  _PROXY_PORT=""
+  _PROXY_PID=""
+  _start_proxy
+
   _build_exec_script
+
+  # Append proxy env exports to exec.sh (before the exec line)
+  if [ -n "$_PROXY_PORT" ]; then
+    _proxy_script="$_tmpdir/exec-proxy.sh"
+    {
+      echo '#!/bin/sh'
+      printf 'export HTTPS_PROXY="http://127.0.0.1:%s"\n' "$_PROXY_PORT"
+      printf 'export HTTP_PROXY="http://127.0.0.1:%s"\n' "$_PROXY_PORT"
+      printf 'exec "%s" "$@"\n' "$_tmpdir/exec.sh"
+    } > "$_proxy_script"
+    chmod +x "$_proxy_script"
+  fi
+
   if [ -n "$_sandbox_cmd" ]; then
     echo "[$_WRAPPER_NAME] sandbox: $_sandbox_cmd" >&2
   else
     echo "[$_WRAPPER_NAME] sandbox: none" >&2
   fi
   [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$_WRAPPER_NAME] exec: $_sandbox_cmd $*" >&2
-  exec "$_tmpdir/exec.sh" "$@"
+
+  if [ -n "$_PROXY_PID" ]; then
+    # Proxy is running — can't exec, need to wait and clean up
+    "$_tmpdir/exec-proxy.sh" "$@"
+    _exit_code=$?
+    kill "$_PROXY_PID" 2>/dev/null || true
+    wait "$_PROXY_PID" 2>/dev/null || true
+    exit "$_exit_code"
+  else
+    exec "$_tmpdir/exec.sh" "$@"
+  fi
 }

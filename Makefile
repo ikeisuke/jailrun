@@ -27,6 +27,7 @@ install:
 	install -m 644 lib/config-defaults.sh $(PREFIX)/lib/jailrun/config-defaults.sh
 	install -m 755 lib/config-cmd.sh $(PREFIX)/lib/jailrun/config-cmd.sh
 	install -m 644 lib/config.py $(PREFIX)/lib/jailrun/config.py
+	install -m 644 lib/proxy.py $(PREFIX)/lib/jailrun/proxy.py
 
 test:
 	bats tests/
