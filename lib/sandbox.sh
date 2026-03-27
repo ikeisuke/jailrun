@@ -38,7 +38,7 @@ for _p in \
   "$HOME/Library/Application Support/Codex" \
   "$HOME/Library/Application Support/kiro-cli"
 do
-  [ -d "$_p" ] || continue
+  [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
   _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
 $_p"
 done
@@ -46,7 +46,7 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
   case "$_p" in
     "~"*) _p="$HOME${_p#"~"}" ;;
   esac
-  [ -d "$_p" ] || continue
+  [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
   _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
 $_p"
 done
