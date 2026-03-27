@@ -147,7 +147,7 @@ def merge_layer(base: dict, layer: dict, append_lists: bool = False) -> dict:
 
 
 def resolve_config(app: str = "", directory: str = "") -> dict:
-    """Load and merge config layers: defaults -> global -> profile -> app -> dir."""
+    """Load and merge config layers: defaults -> global -> profile -> app settings -> dir."""
     result = copy.deepcopy(DEFAULTS)
 
     path = config_file()
@@ -162,16 +162,14 @@ def resolve_config(app: str = "", directory: str = "") -> dict:
 
     # Determine profile from app or dir
     profile_name = ""
+    app_settings = {}
 
-    # Layer 2: [app.<name>] -> resolve profile
+    # Layer 2: [app.<name>] -> extract profile name and settings
     if app and "app" in raw and app in raw["app"]:
         app_conf = raw["app"][app]
         if "profile" in app_conf:
             profile_name = app_conf["profile"]
-        # App-level settings (non-profile) append to lists
         app_settings = {k: v for k, v in app_conf.items() if k != "profile"}
-        if app_settings:
-            result = merge_layer(result, app_settings, append_lists=True)
 
     # Layer 3: [dir."<path>"] -> may override profile
     dir_conf = {}
@@ -191,7 +189,12 @@ def resolve_config(app: str = "", directory: str = "") -> dict:
     if profile_name and "profile" in raw and profile_name in raw["profile"]:
         result = merge_layer(result, raw["profile"][profile_name], append_lists=True)
 
-    # Layer 5: Apply dir settings (non-profile) — appends to lists
+    # Layer 5: Apply app settings (non-profile) — appends to lists
+    # Applied AFTER profile so app-specific overrides take precedence
+    if app_settings:
+        result = merge_layer(result, app_settings, append_lists=True)
+
+    # Layer 6: Apply dir settings (non-profile) — appends to lists
     if dir_conf:
         dir_settings = {k: v for k, v in dir_conf.items() if k != "profile"}
         if dir_settings:
@@ -264,6 +267,10 @@ def migrate_shell_to_toml(shell_path: Path) -> str:
             # Handle GH_KEYCHAIN_SERVICE github: prefix
             if key == "GH_KEYCHAIN_SERVICE" and val.startswith("github:"):
                 val = val[7:]
+
+            # GH_TOKEN_NAME takes precedence over legacy GH_KEYCHAIN_SERVICE
+            if key == "GH_KEYCHAIN_SERVICE" and "gh_token_name" in values:
+                continue
 
             if toml_key in LIST_KEYS:
                 values[toml_key] = val.split() if val else []

@@ -43,6 +43,7 @@ else
 fi
 
 DEFAULT_AWS_PROFILE="${AWS_PROFILE:-$DEFAULT_AWS_PROFILE}"
+_DEFAULT_REGION="${DEFAULT_REGION:-ap-northeast-1}"
 
 # runtime override: GH_TOKEN_NAME=<name> jailrun claude
 GH_TOKEN_NAME="${_GH_TOKEN_NAME_OVERRIDE:-$GH_TOKEN_NAME}"
