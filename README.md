@@ -51,13 +51,13 @@ Config file: `~/.config/jailrun/config.toml`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `ALLOWED_AWS_PROFILES` | list | `"default"` | Allowed AWS profiles (space-separated) |
-| `DEFAULT_AWS_PROFILE` | string | `"default"` | Default AWS profile when none specified |
-| `GH_TOKEN_NAME` | string | `"classic"` | Short token name (expanded to `jailrun:github:<name>`) |
-| `SANDBOX_EXTRA_DENY_READ` | list | (empty) | Additional read-deny paths |
-| `SANDBOX_EXTRA_ALLOW_WRITE` | list | (empty) | Additional write-allow directories |
-| `SANDBOX_EXTRA_ALLOW_WRITE_FILES` | list | (empty) | Additional write-allow files |
-| `SANDBOX_PASSTHROUGH_ENV` | list | (empty) | Env vars to pass through to sandbox |
+| `allowed_aws_profiles` | list | `["default"]` | Allowed AWS profiles |
+| `default_aws_profile` | string | `"default"` | Default AWS profile when none specified |
+| `gh_token_name` | string | `"classic"` | Short token name (expanded to `jailrun:github:<name>`) |
+| `sandbox_extra_deny_read` | list | `[]` | Additional read-deny paths |
+| `sandbox_extra_allow_write` | list | `[]` | Additional write-allow directories |
+| `sandbox_extra_allow_write_files` | list | `[]` | Additional write-allow files |
+| `sandbox_passthrough_env` | list | `[]` | Env vars to pass through to sandbox |
 
 ### AWS Profile Priority
 
