@@ -59,6 +59,17 @@ Config file: `~/.config/jailrun/config.toml`
 | `sandbox_extra_allow_write_files` | list | `[]` | Additional write-allow files |
 | `sandbox_passthrough_env` | list | `[]` | Env vars to pass through to sandbox |
 
+### Environment Variable Overrides
+
+Some config keys can be overridden at runtime via environment variables:
+
+| Env Var | Overrides | Example |
+|---------|-----------|---------|
+| `AGENT_AWS_PROFILES` | `allowed_aws_profiles` selection | `AGENT_AWS_PROFILES=staging jailrun claude` |
+| `AWS_PROFILE` | `default_aws_profile` | `AWS_PROFILE=dev jailrun claude` |
+| `GH_TOKEN_NAME` | `gh_token_name` | `GH_TOKEN_NAME=fine-grained jailrun claude` |
+| `SANDBOX_PASSTHROUGH_ENV` | `sandbox_passthrough_env` | `SANDBOX_PASSTHROUGH_ENV="KEY1 KEY2" jailrun claude` |
+
 ### AWS Profile Priority
 
 ```
