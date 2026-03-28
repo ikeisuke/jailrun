@@ -34,6 +34,9 @@
 - **スケーラビリティ**: 該当なし
 - **可用性**: 該当なし
 
+## 完了条件
+- `make test` が全パスすること（`posix_compliance.bats`, `config.bats`, `config_cmd.bats` 含む）
+
 ## 技術的考慮事項
 - `python3 lib/config.py <subcommand>` の呼び出しインターフェースを維持
 - config_cli.py と config_migrate.py は config.py をimportして使用

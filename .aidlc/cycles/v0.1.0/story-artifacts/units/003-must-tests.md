@@ -14,12 +14,12 @@
 
 ## 境界
 - proxy.py / sandbox-linux-systemd.sh のコード修正は行わない（テスト追加のみ）
-- credential-guard のテストはUnit 005で実施
+- credential-guard のテストはUnit 007で実施
 
 ## 依存関係
 
 ### 依存する Unit
-- Unit 002: config.py 責務分割（依存理由: config.py分割後のテスト基盤が安定している必要がある。分割により既存テストが壊れていないことを先に確認する）
+- なし
 
 ### 外部依存
 - pytest（proxy.pyテスト用）
@@ -30,6 +30,9 @@
 - **セキュリティ**: テストで実際のネットワーク接続やサンドボックス実行を行わない
 - **スケーラビリティ**: 該当なし
 - **可用性**: 該当なし
+
+## 完了条件
+- `make test` が全パスすること（新規テストファイル含む）
 
 ## 技術的考慮事項
 - proxy.pyテストはpytest + モックベース（socket.getaddrinfoをモック）
