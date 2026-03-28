@@ -64,6 +64,9 @@ _setup_sandbox() {
       for _p in $_SANDBOX_ALLOW_WRITE_PATHS; do
         echo "      (subpath \"$_p\")"
       done
+      for _p in $_SANDBOX_ALLOW_WRITE_LOCK_PATHS; do
+        echo "      (subpath \"$_p\")"
+      done
       for _f in $_SANDBOX_ALLOW_WRITE_FILES; do
         echo "      (literal \"$_f\")"
       done

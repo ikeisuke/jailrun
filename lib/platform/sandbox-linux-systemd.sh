@@ -115,6 +115,13 @@ _setup_sandbox() {
       echo "-p ReadWritePaths=$_p"
     done
 
+    # Lockfile directories: proper-lockfile creates <dir>.lock next to target.
+    # Pre-create so systemd can bind-mount them as read-write.
+    for _p in $_SANDBOX_ALLOW_WRITE_LOCK_PATHS; do
+      [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
+      echo "-p ReadWritePaths=$_p"
+    done
+
     # Make sensitive directories inaccessible
     for _p in $_SANDBOX_DENY_READ_PATHS; do
       [ -d "$_p" ] && echo "-p InaccessiblePaths=$_p"

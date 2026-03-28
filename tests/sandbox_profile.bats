@@ -36,6 +36,33 @@ CONF
   [[ "$output" != *'(deny mach-lookup (global-name "com.apple.SecurityServer"))'* ]]
 }
 
+@test "seatbelt profile includes lockfile paths for token refresh" {
+  setup_jailrun_env
+  export _CREDENTIAL_GUARD_SANDBOXED=""
+
+  run env -u _CREDENTIAL_GUARD_SANDBOXED sh -c '
+    export JAILRUN_LIB="'"$JAILRUN_LIB"'"
+    export WRAPPER_NAME=claude
+    export XDG_CONFIG_HOME="'"$(mktemp -d)"'"
+    mkdir -p "$XDG_CONFIG_HOME/jailrun"
+    cat > "$XDG_CONFIG_HOME/jailrun/config.toml" <<CONF
+[global]
+allowed_aws_profiles = []
+default_aws_profile = ""
+gh_token_name = "classic"
+CONF
+    . "$JAILRUN_LIB/config.sh"
+    . "$JAILRUN_LIB/credentials.sh"
+    . "$JAILRUN_LIB/sandbox.sh"
+    _setup_sandbox
+    cat "$_tmpdir/sandbox.sb"
+  ' 2>/dev/null
+
+  [ "$status" -eq 0 ]
+  # proper-lockfile creates <dir>.lock next to target; must be writable
+  [[ "$output" == *'.claude.lock")'* ]]
+}
+
 @test "exec.sh contains sandbox-exec and env setup" {
   setup_jailrun_env
 

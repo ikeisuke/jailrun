@@ -62,6 +62,18 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
 $_p"
 done
 
+# Lockfile paths: proper-lockfile creates <dir>.lock next to the target.
+# Claude Code's OAuth token refresh locks ~/.claude without specifying
+# lockfilePath, so proper-lockfile defaults to ~/.claude.lock in $HOME.
+# These paths must be writable even before the lock directory exists.
+_SANDBOX_ALLOW_WRITE_LOCK_PATHS=""
+for _p in \
+  "$HOME/.claude.lock"
+do
+  _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_SANDBOX_ALLOW_WRITE_LOCK_PATHS
+$_p"
+done
+
 _SANDBOX_ALLOW_WRITE_FILES="$HOME/.claude.json"
 for _p in $SANDBOX_EXTRA_ALLOW_WRITE_FILES; do
   case "$_p" in
