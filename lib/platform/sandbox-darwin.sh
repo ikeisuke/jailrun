@@ -56,6 +56,7 @@ _setup_sandbox() {
       echo '      (literal "/dev/zero")'
       echo '      (literal "/dev/random")'
       echo '      (literal "/dev/urandom")'
+      echo '      (literal "/dev/tty")'
       echo "      (subpath \"$_tmpdir\")"
       _OLD_IFS="$IFS"; IFS="
 "
