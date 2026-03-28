@@ -7,4 +7,4 @@ set -eu
 # resolve lib dir (works both in dev and after make install)
 _LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-exec python3 "$_LIB_DIR/config.py" "$@"
+exec python3 "$_LIB_DIR/config_cli.py" "$@"

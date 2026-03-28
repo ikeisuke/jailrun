@@ -22,7 +22,7 @@ fi
 _LEGACY_CONFIG="$CONFIG_DIR/config"
 if [ ! -f "$CONFIG_FILE" ] && [ -f "$_LEGACY_CONFIG" ]; then
   echo "[$_WRAPPER_NAME] migrating config to TOML format..." >&2
-  python3 "$JAILRUN_LIB/config.py" migrate --force 2>&1 | sed "s/^/[$_WRAPPER_NAME] /" >&2
+  python3 "$JAILRUN_LIB/config_cli.py" migrate --force 2>&1 | sed "s/^/[$_WRAPPER_NAME] /" >&2
 fi
 
 # save caller's env overrides before config overwrites them
@@ -31,13 +31,13 @@ _SANDBOX_PASSTHROUGH_ENV_OVERRIDE="${SANDBOX_PASSTHROUGH_ENV:-}"
 
 # load config via Python (outputs shell-eval format)
 if [ -f "$CONFIG_FILE" ]; then
-  _config_output="$(python3 "$JAILRUN_LIB/config.py" load --app "$_WRAPPER_NAME" --dir "$PWD")"
+  _config_output="$(python3 "$JAILRUN_LIB/config_cli.py" load --app "$_WRAPPER_NAME" --dir "$PWD")"
   eval "$_config_output"
   unset _config_output
 else
   echo "[$_WRAPPER_NAME] config not found: $CONFIG_FILE" >&2
   echo "[$_WRAPPER_NAME] generating initial config..." >&2
-  python3 "$JAILRUN_LIB/config.py" init 2>&1 | sed "s/^/[$_WRAPPER_NAME] /" >&2
+  python3 "$JAILRUN_LIB/config_cli.py" init 2>&1 | sed "s/^/[$_WRAPPER_NAME] /" >&2
   echo "[$_WRAPPER_NAME] please review: $CONFIG_FILE" >&2
   exit 1
 fi

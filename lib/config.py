@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
-"""jailrun configuration manager (TOML-based).
+"""jailrun configuration API (TOML-based).
 
-Subcommands:
-    load   --app NAME --dir PATH   Merge config and output shell-eval format
-    show                            Display current config values
-    set    KEY VALUE                Update a config key
-    set    --append KEY VALUE       Add a value to a list key
-    set    --remove KEY VALUE       Remove a value from a list key
-    edit                            Open config in $EDITOR
-    path                            Print config file path
-    init   [--force]                Generate default config
-    migrate                         Convert legacy shell config to TOML
+This module provides the core configuration loading, merging, and writing
+functionality. For the CLI interface, see config_cli.py.
 """
 
 from __future__ import annotations
@@ -18,7 +10,6 @@ from __future__ import annotations
 import os
 import sys
 import copy
-import subprocess
 from pathlib import Path
 
 if sys.version_info >= (3, 11):
@@ -229,77 +220,6 @@ def to_shell(config: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Migration from legacy shell config
-# ---------------------------------------------------------------------------
-
-def migrate_shell_to_toml(shell_path: Path) -> str:
-    """Parse legacy shell config and produce TOML."""
-    values: dict = {}
-    with open(shell_path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            # Handle: export KEY="value" or KEY="value" or KEY=value
-            if line.startswith("export "):
-                line = line[7:].strip()
-            if "=" not in line:
-                continue
-            key, _, val = line.partition("=")
-            key = key.strip()
-            val = val.strip().strip('"').strip("'")
-
-            # Map legacy keys
-            key_map = {
-                "GH_KEYCHAIN_SERVICE": "gh_token_name",
-                "GH_TOKEN_NAME": "gh_token_name",
-                "ALLOWED_AWS_PROFILES": "allowed_aws_profiles",
-                "DEFAULT_AWS_PROFILE": "default_aws_profile",
-                "SANDBOX_EXTRA_DENY_READ": "sandbox_extra_deny_read",
-                "SANDBOX_EXTRA_ALLOW_WRITE": "sandbox_extra_allow_write",
-                "SANDBOX_EXTRA_ALLOW_WRITE_FILES": "sandbox_extra_allow_write_files",
-                "SANDBOX_PASSTHROUGH_ENV": "sandbox_passthrough_env",
-            }
-            toml_key = key_map.get(key)
-            if toml_key is None:
-                continue
-
-            # Handle GH_KEYCHAIN_SERVICE github: prefix
-            if key == "GH_KEYCHAIN_SERVICE" and val.startswith("github:"):
-                val = val[7:]
-
-            # GH_TOKEN_NAME takes precedence over legacy GH_KEYCHAIN_SERVICE
-            if key == "GH_KEYCHAIN_SERVICE" and "gh_token_name" in values:
-                continue
-
-            if toml_key in LIST_KEYS:
-                values[toml_key] = val.split() if val else []
-            else:
-                values[toml_key] = val
-
-    # Build TOML
-    lines = [
-        "# jailrun config (migrated from shell format)",
-        "# Docs: https://github.com/ikeisuke/jailrun",
-        "",
-        "[global]",
-    ]
-    merged = copy.deepcopy(DEFAULTS)
-    merged.update(values)
-
-    for key in DEFAULTS:
-        val = merged[key]
-        if isinstance(val, list):
-            items = ", ".join(f'"{v}"' for v in val)
-            lines.append(f'{key} = [{items}]')
-        else:
-            lines.append(f'{key} = "{val}"')
-
-    lines.append("")
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
 # TOML writing helpers
 # ---------------------------------------------------------------------------
 
@@ -362,185 +282,9 @@ def set_key_in_toml(path: Path, key: str, value, section: str = "global") -> Non
 
 
 # ---------------------------------------------------------------------------
-# CLI commands
+# Backward-compatible entry point
 # ---------------------------------------------------------------------------
-
-def cmd_load(args: list[str]) -> None:
-    app = ""
-    directory = ""
-    i = 0
-    while i < len(args):
-        if args[i] == "--app" and i + 1 < len(args):
-            app = args[i + 1]
-            i += 2
-        elif args[i] == "--dir" and i + 1 < len(args):
-            directory = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
-    conf = resolve_config(app=app, directory=directory)
-    print(to_shell(conf))
-
-
-def cmd_show(args: list[str]) -> None:
-    path = config_file()
-    if not path.exists():
-        print(f"[config] no config file found: {path}", file=sys.stderr)
-        print("[config] run 'jailrun config init' to create one", file=sys.stderr)
-        sys.exit(1)
-
-    conf = resolve_config()
-    for key in sorted(conf):
-        val = conf[key]
-        if isinstance(val, list):
-            print(f"{key} = {val}")
-        else:
-            print(f'{key} = "{val}"')
-
-
-def cmd_set(args: list[str]) -> None:
-    path = config_file()
-    if not path.exists():
-        print(f"[config] no config file found: {path}", file=sys.stderr)
-        sys.exit(1)
-
-    mode = "replace"
-    rest = []
-    for arg in args:
-        if arg == "--append":
-            mode = "append"
-        elif arg == "--remove":
-            mode = "remove"
-        else:
-            rest.append(arg)
-
-    if len(rest) < 1:
-        print("[config] ERROR: missing KEY", file=sys.stderr)
-        sys.exit(1)
-
-    key = rest[0]
-    if key not in KNOWN_KEYS:
-        print(f"[config] ERROR: unknown key '{key}'", file=sys.stderr)
-        print(f"[config] known keys: {', '.join(sorted(KNOWN_KEYS))}", file=sys.stderr)
-        sys.exit(1)
-
-    if mode != "replace" and key not in LIST_KEYS:
-        print(f"[config] ERROR: --{mode} is only supported for list-type keys", file=sys.stderr)
-        sys.exit(1)
-
-    if mode == "replace":
-        if len(rest) < 2:
-            print("[config] ERROR: missing VALUE", file=sys.stderr)
-            sys.exit(1)
-        value = rest[1]
-        if key in LIST_KEYS:
-            set_key_in_toml(path, key, value.split())
-        else:
-            set_key_in_toml(path, key, value)
-    elif mode == "append":
-        if len(rest) < 2:
-            print("[config] ERROR: missing VALUE", file=sys.stderr)
-            sys.exit(1)
-        value = rest[1]
-        conf = resolve_config()
-        current = conf.get(key, [])
-        if value in current:
-            print(f"[config] '{value}' already in {key}", file=sys.stderr)
-            return
-        current.append(value)
-        set_key_in_toml(path, key, current)
-    elif mode == "remove":
-        if len(rest) < 2:
-            print("[config] ERROR: missing VALUE", file=sys.stderr)
-            sys.exit(1)
-        value = rest[1]
-        conf = resolve_config()
-        current = conf.get(key, [])
-        current = [v for v in current if v != value]
-        set_key_in_toml(path, key, current)
-
-
-def cmd_edit(args: list[str]) -> None:
-    path = config_file()
-    if not path.exists():
-        print(f"[config] no config file found: {path}", file=sys.stderr)
-        sys.exit(1)
-    editor = os.environ.get("EDITOR", "vi")
-    os.execvp(editor, [editor, str(path)])
-
-
-def cmd_path(args: list[str]) -> None:
-    print(config_file())
-
-
-def cmd_init(args: list[str]) -> None:
-    force = "--force" in args
-    path = config_file()
-
-    if path.exists() and not force:
-        print(f"[config] config already exists: {path}", file=sys.stderr)
-        print("[config] use --force to overwrite", file=sys.stderr)
-        sys.exit(1)
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(DEFAULT_TOML)
-    print(f"[config] created: {path}")
-
-
-def cmd_migrate(args: list[str]) -> None:
-    legacy = legacy_config_file()
-    toml_path = config_file()
-
-    if not legacy.exists():
-        print(f"[config] no legacy config found: {legacy}", file=sys.stderr)
-        sys.exit(1)
-
-    if toml_path.exists() and "--force" not in args:
-        print(f"[config] TOML config already exists: {toml_path}", file=sys.stderr)
-        print("[config] use --force to overwrite", file=sys.stderr)
-        sys.exit(1)
-
-    toml_content = migrate_shell_to_toml(legacy)
-    toml_path.parent.mkdir(parents=True, exist_ok=True)
-    toml_path.write_text(toml_content + "\n")
-    print(f"[config] migrated: {legacy} -> {toml_path}")
-    print(f"[config] review the new config: {toml_path}")
-    print(f"[config] you can remove the old config: {legacy}")
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def main() -> None:
-    if len(sys.argv) < 2:
-        print(__doc__, file=sys.stderr)
-        sys.exit(1)
-
-    cmd = sys.argv[1]
-    args = sys.argv[2:]
-
-    commands = {
-        "load": cmd_load,
-        "show": cmd_show,
-        "set": cmd_set,
-        "edit": cmd_edit,
-        "path": cmd_path,
-        "init": cmd_init,
-        "migrate": cmd_migrate,
-    }
-
-    if cmd in ("--help", "-h"):
-        print(__doc__)
-        sys.exit(0)
-
-    if cmd not in commands:
-        print(f"[config] ERROR: unknown subcommand '{cmd}'", file=sys.stderr)
-        sys.exit(1)
-
-    commands[cmd](args)
-
 
 if __name__ == "__main__":
+    from config_cli import main
     main()
