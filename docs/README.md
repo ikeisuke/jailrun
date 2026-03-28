@@ -1,4 +1,6 @@
-# AI Agent Security Wrapper
+# AI Agent Security Wrapper — Detailed Reference
+
+> For quick start, installation, and configuration, see the [main README](../README.md).
 
 Protects AI coding agents (Claude Code, Codex, Kiro CLI, Gemini CLI) from
 abusing local credentials via multi-layered defense.
@@ -73,83 +75,19 @@ jailrun <agent>
 
 ## Setup
 
-### 1. Install
-
-```bash
-make install                        # installs to ~/.local
-make install PREFIX=/usr/local      # installs to /usr/local
-```
-
-### 2. First run
-
-```bash
-jailrun claude  # or codex, gemini, kiro-cli, kiro-cli-chat
-```
-
-On first run, `~/.config/jailrun/config` is auto-generated and the process
-exits, prompting you to review the config.
-
-### 3. Edit config
-
-```bash
-vi ~/.config/jailrun/config
-```
-
-```bash
-# allowed AWS profiles (space-separated)
-ALLOWED_AWS_PROFILES="dev staging"
-
-# default AWS profile
-DEFAULT_AWS_PROFILE="dev"
-
-# short token name — internally expanded to jailrun:github:<name>
-GH_TOKEN_NAME="classic"
-```
+> For installation and basic configuration, see the [main README](../README.md).
 
 Binary paths are resolved automatically via `command -v` with PATH cleaning
 (no manual configuration needed).
 
-### 4. Set up GitHub PAT
-
-See [github-pat-setup.md](./github-pat-setup.md).
 Fine-grained and Classic PATs can be stored under separate Keychain service names.
+See [github-pat-setup.md](./github-pat-setup.md) for details.
 
-### 5. Linux/WSL2
-
-Uses systemd-run (no extra install if systemd is available):
-
-```bash
-# check if systemd is active in WSL2
-systemctl --user status
-```
-
-GitHub tokens are managed via `secret-tool` (GNOME Keyring):
-
-```bash
-sudo apt install libsecret-tools gnome-keyring    # Ubuntu/Debian
-jailrun token add --name github:classic
-```
-
-If `secret-tool` is not installed, jailrun runs without GitHub PAT (WARN shown).
+If `secret-tool` is not installed on Linux, jailrun runs without GitHub PAT (WARN shown).
 
 ## Usage
 
-```bash
-# normal launch (protected with configured profile)
-jailrun claude
-jailrun codex
-jailrun kiro-cli
-jailrun gemini
-
-# specify AWS profile(s) (must be in allowlist)
-AGENT_AWS_PROFILES=staging jailrun claude
-
-# load multiple profiles
-AGENT_AWS_PROFILES="dev staging" jailrun claude
-
-# inherit shell's AWS_PROFILE
-AWS_PROFILE=dev jailrun claude
-```
+> For basic commands, see the [main README](../README.md#quick-start).
 
 ### Repository Rulesets
 
@@ -298,19 +236,9 @@ cat ~/.aws/config
 
 ## Troubleshooting
 
-### "AWS credential export failed"
+> For common issues, see the [main README](../README.md#troubleshooting).
 
-SSO session expired. Re-login:
-
-```bash
-aws sso login --profile <profile-name>
-```
-
-### Sandbox Debugging
-
-Launch with `AGENT_SANDBOX_DEBUG=1` to:
-- Disable write restrictions (read denials remain active)
-- Print exec command to stderr
+### Advanced: Finding Blocked Write Paths
 
 Use `find -newer` to identify write targets outside the whitelist:
 
@@ -331,24 +259,4 @@ find ~ -maxdepth 4 -newer /tmp/before-agent \
 ```
 
 Add discovered paths to `SANDBOX_EXTRA_ALLOW_WRITE` or
-`SANDBOX_EXTRA_ALLOW_WRITE_FILES` in `~/.config/jailrun/config`.
-
-### Agent won't start / behaves oddly
-
-Sandbox write restrictions may be the cause. Isolate:
-
-```bash
-# 1. launch the binary directly to confirm sandbox is the cause
-/opt/homebrew/bin/claude
-
-# 2. if it works, use debug mode to find blocked writes
-AGENT_SANDBOX_DEBUG=1 jailrun claude
-```
-
-### Bypass the wrapper
-
-Call the binary directly:
-
-```bash
-/opt/homebrew/bin/claude
-```
+`SANDBOX_EXTRA_ALLOW_WRITE_FILES` in `~/.config/jailrun/config.toml`.

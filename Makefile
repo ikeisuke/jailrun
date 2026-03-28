@@ -26,10 +26,13 @@ install:
 	install -m 644 lib/config-defaults.sh $(PREFIX)/lib/jailrun/config-defaults.sh
 	install -m 755 lib/config-cmd.sh $(PREFIX)/lib/jailrun/config-cmd.sh
 	install -m 644 lib/config.py $(PREFIX)/lib/jailrun/config.py
+	install -m 644 lib/config_cli.py $(PREFIX)/lib/jailrun/config_cli.py
+	install -m 644 lib/config_migrate.py $(PREFIX)/lib/jailrun/config_migrate.py
 	install -m 644 lib/proxy.py $(PREFIX)/lib/jailrun/proxy.py
 
 test:
 	bats tests/
+	python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 uninstall:
 	rm -f $(PREFIX)/bin/jailrun

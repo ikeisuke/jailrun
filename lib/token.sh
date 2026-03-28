@@ -10,6 +10,10 @@ set -eu
 
 _SERVICE_PREFIX="jailrun"
 
+# ============================================================
+# Section 1: Utility helpers
+# ============================================================
+
 _service_name() {
   echo "${_SERVICE_PREFIX}:$1"
 }
@@ -19,7 +23,9 @@ _token_preview() {
   printf '%.12s...' "$1"
 }
 
-# --- OS-specific helpers ---
+# ============================================================
+# Section 2: OS-specific keychain operations
+# ============================================================
 
 _get_token() {
   local _service="$1"
@@ -61,6 +67,10 @@ _delete_token() {
   esac
 }
 
+# ============================================================
+# Section 3: Token validation helpers
+# ============================================================
+
 _check_gh_expiration() {
   local _token="$1"
   local _expires=""
@@ -75,21 +85,34 @@ _check_gh_expiration() {
   fi
 }
 
-# --- Subcommands ---
+# ============================================================
+# Section 4: CLI argument parsing helpers
+# ============================================================
 
-_cmd_add() {
-  local _name=""
+# Parse --name option from arguments. Sets _name variable.
+# Usage: _parse_name_option "$@"
+_parse_name_option() {
+  local _caller="$1"; shift
+  _name=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --name) _name="$2"; shift 2 ;;
       --name=*) _name="${1#*=}"; shift ;;
-      *) echo "[token add] ERROR: unknown option '$1'" >&2; exit 1 ;;
+      *) echo "[token $_caller] ERROR: unknown option '$1'" >&2; exit 1 ;;
     esac
   done
   if [ -z "$_name" ]; then
-    echo "[token add] ERROR: --name is required" >&2
+    echo "[token $_caller] ERROR: --name is required" >&2
     exit 1
   fi
+}
+
+# ============================================================
+# Section 5: Subcommand implementations
+# ============================================================
+
+_cmd_add() {
+  _parse_name_option "add" "$@"
 
   local _service _existing
   _service=$(_service_name "$_name")
@@ -116,18 +139,7 @@ _cmd_add() {
 }
 
 _cmd_rotate() {
-  local _name=""
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --name) _name="$2"; shift 2 ;;
-      --name=*) _name="${1#*=}"; shift ;;
-      *) echo "[token rotate] ERROR: unknown option '$1'" >&2; exit 1 ;;
-    esac
-  done
-  if [ -z "$_name" ]; then
-    echo "[token rotate] ERROR: --name is required" >&2
-    exit 1
-  fi
+  _parse_name_option "rotate" "$@"
 
   local _service _current
   _service=$(_service_name "$_name")
@@ -170,18 +182,7 @@ _cmd_rotate() {
 }
 
 _cmd_delete() {
-  local _name=""
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --name) _name="$2"; shift 2 ;;
-      --name=*) _name="${1#*=}"; shift ;;
-      *) echo "[token delete] ERROR: unknown option '$1'" >&2; exit 1 ;;
-    esac
-  done
-  if [ -z "$_name" ]; then
-    echo "[token delete] ERROR: --name is required" >&2
-    exit 1
-  fi
+  _parse_name_option "delete" "$@"
 
   local _service _current
   _service=$(_service_name "$_name")
@@ -235,7 +236,9 @@ _cmd_list() {
   esac
 }
 
-# --- Dispatch ---
+# ============================================================
+# Section 6: CLI dispatch
+# ============================================================
 
 _subcmd="${1:-}"
 shift 2>/dev/null || true
