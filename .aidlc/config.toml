@@ -100,7 +100,7 @@ enabled = true
 # mode: "manual" | "semi_auto"
 # - manual: 従来どおりすべての承認ポイントでユーザー確認（デフォルト）
 # - semi_auto: AIレビュー合格時にユーザー承認を省略し自動遷移
-mode = "manual"
+mode = "semi_auto"
 
 [rules.custom]
 # プロジェクト固有のカスタムルール
