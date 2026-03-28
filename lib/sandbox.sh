@@ -6,7 +6,10 @@
 #           $_gh_token, $JAILRUN_LIB, $SANDBOX_EXTRA_*, $CONFIG_DIR
 # exports: credential_guard_sandbox_exec()
 
-# --- sandbox path lists (newline-separated) ---
+# ============================================================
+# Section 1: Sandbox path lists (newline-separated)
+# ============================================================
+
 # Contract: _SANDBOX_ALLOW_WRITE_PATHS contains only existing directories.
 # Platform backends may rely on this guarantee (e.g. systemd ReadWritePaths).
 _SANDBOX_DENY_READ_PATHS="$HOME/.aws
@@ -68,6 +71,10 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE_FILES; do
 $_p"
 done
 
+# ============================================================
+# Section 2: Platform backend loading
+# ============================================================
+
 _sandbox_cmd=""
 
 case "$(uname)" in
@@ -75,7 +82,9 @@ case "$(uname)" in
   Linux)  . "$JAILRUN_LIB/platform/sandbox-linux.sh" ;;
 esac
 
-# --- exec helpers ---
+# ============================================================
+# Section 3: Environment spec generation (env-spec)
+# ============================================================
 
 _build_git_askpass() {
   printf '#!/bin/sh\necho "$GH_TOKEN"\n' > "$_tmpdir/git-askpass"
@@ -160,6 +169,10 @@ _build_env_spec() {
   } > "$_spec"
 }
 
+# ============================================================
+# Section 4: Exec script generation
+# ============================================================
+
 # generate exec.sh: env setup + sandbox command + exec
 _build_exec_script() {
   local _script="$_tmpdir/exec.sh"
@@ -191,6 +204,10 @@ _build_exec_script() {
   chmod +x "$_script"
 }
 
+# ============================================================
+# Section 5: Proxy management
+# ============================================================
+
 _start_proxy() {
   # Read proxy config from TOML (already eval'd into shell vars)
   if [ "${PROXY_ENABLED:-false}" != "true" ] && [ "${PROXY_ENABLED:-false}" != "1" ]; then
@@ -221,6 +238,10 @@ _start_proxy() {
   _PROXY_PORT="$_proxy_port"
   _PROXY_PID="$_proxy_pid"
 }
+
+# ============================================================
+# Section 6: Main entry point
+# ============================================================
 
 credential_guard_sandbox_exec() {
   if [ -z "${_CREDENTIAL_GUARD_SANDBOXED:-}" ]; then
