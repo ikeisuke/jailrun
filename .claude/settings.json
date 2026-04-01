@@ -68,6 +68,10 @@
       "Skill(reviewing-operations-premerge)",
       "Skill(write-history)"
     ],
+    "deny": [
+      "Edit(.claude/plugins/**)",
+      "Write(.claude/plugins/**)"
+    ],
     "ask": [
       "Bash(git push*--force *)",
       "Bash(git push*--force-with-lease *)",
