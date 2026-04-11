@@ -273,10 +273,11 @@ Seatbelt deny events during execution and displays them on stderr at exit.
 AGENT_SANDBOX_DEBUG=1 jailrun claude
 ```
 
-Deny events are logged to `$TMPDIR/jailrun-seatbelt-<PID>.log` (PID-based
-filename prevents conflicts during parallel runs). On exit, if the log file
-is non-empty, its contents are printed between `=== Seatbelt deny log ===`
-markers on stderr.
+Deny events are logged to `jailrun-seatbelt-<PID>.log` inside jailrun's
+temporary working directory (created via `mktemp -d`). The PID-based
+filename prevents conflicts during parallel runs. On exit, if the log
+file is non-empty, its contents are printed between
+`=== Seatbelt deny log ===` markers on stderr.
 
 This helps identify which file-system operations the sandbox blocked,
 making it easier to diagnose issues like token refresh failures or
