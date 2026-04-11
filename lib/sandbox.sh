@@ -47,7 +47,8 @@ done
 for _p in \
   "$HOME/Library/Application Support/Claude" \
   "$HOME/Library/Application Support/Codex" \
-  "$HOME/Library/Application Support/kiro-cli"
+  "$HOME/Library/Application Support/kiro-cli" \
+  "$HOME/Library/Keychains"
 do
   [ -d "$_p" ] || continue
   _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
@@ -62,13 +63,14 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
 $_p"
 done
 
-# Lockfile paths: proper-lockfile creates <dir>.lock next to the target.
-# Claude Code's OAuth token refresh locks ~/.claude without specifying
-# lockfilePath, so proper-lockfile defaults to ~/.claude.lock in $HOME.
-# These paths must be writable even before the lock directory exists.
+# Lockfile paths: proper-lockfile creates <target>.lock next to the target.
+# Claude Code uses lock directories for multiple auth-related files, including
+# ~/.claude and ~/.claude.json. These paths must be writable even before the
+# lock directory exists.
 _SANDBOX_ALLOW_WRITE_LOCK_PATHS=""
 for _p in \
-  "$HOME/.claude.lock"
+  "$HOME/.claude.lock" \
+  "$HOME/.claude.json.lock"
 do
   _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_SANDBOX_ALLOW_WRITE_LOCK_PATHS
 $_p"
@@ -82,6 +84,13 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE_FILES; do
   _SANDBOX_ALLOW_WRITE_FILES="$_SANDBOX_ALLOW_WRITE_FILES
 $_p"
 done
+
+_regex_escape() {
+  printf '%s' "$1" | sed 's/[][(){}.^$+*?|\\]/\\&/g'
+}
+
+_home_regex=$(_regex_escape "$HOME")
+_SANDBOX_ALLOW_WRITE_REGEXES="^${_home_regex}/\\.claude\\.json\\.tmp\\.[^/]+$"
 
 # ============================================================
 # Section 2: Platform backend loading

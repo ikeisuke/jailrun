@@ -140,17 +140,19 @@ These directories are blocked at kernel level:
 
 Additional paths can be added via `SANDBOX_EXTRA_DENY_READ` in config.
 
-### Keychain / Keyring Blocking
+### Keychain / Keyring Access
 
-The sandbox blocks direct access to OS credential stores:
+The sandbox treats OS credential stores differently by platform:
 
 | Platform | Mechanism |
 |----------|-----------|
-| macOS | Seatbelt denies `mach-lookup` for `com.apple.SecurityServer` |
+| macOS | Seatbelt keeps `com.apple.SecurityServer` reachable and permits writes under `~/Library/Keychains` |
 | Linux | D-Bus session bus socket made inaccessible via `InaccessiblePaths` |
 
-Tokens are injected as env vars before sandbox exec, so keychain access is
-not needed — and now not possible — from within the sandbox.
+On macOS, this is required for native TLS trust evaluation and for sandboxed
+apps that refresh their own auth state through Keychain-backed storage.
+Secrets are still protected by read-deny rules on sensitive files and by
+injecting scoped credentials via environment variables before sandbox exec.
 
 ### Environment Variable Passthrough
 

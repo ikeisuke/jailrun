@@ -113,9 +113,9 @@ Default blocked paths (kernel-enforced):
 - `~/.gnupg` — GPG private keys
 - `~/.ssh` — SSH private keys
 
-### Keychain Blocking
+### Keychain / Keyring Handling
 
 | Platform | Mechanism |
 |----------|-----------|
-| macOS | Seatbelt denies `mach-lookup` for `com.apple.SecurityServer` |
+| macOS | Seatbelt allows `mach-lookup` for `com.apple.SecurityServer` and permits writes under `~/Library/Keychains` |
 | Linux | D-Bus session bus socket made inaccessible |

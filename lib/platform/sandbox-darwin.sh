@@ -70,6 +70,9 @@ _setup_sandbox() {
       for _f in $_SANDBOX_ALLOW_WRITE_FILES; do
         echo "      (literal \"$_f\")"
       done
+      for _re in $_SANDBOX_ALLOW_WRITE_REGEXES; do
+        echo "      (regex #\"$_re\")"
+      done
       IFS="$_OLD_IFS"
       echo ')))'
       if [ -n "$_other_worktrees" ]; then
