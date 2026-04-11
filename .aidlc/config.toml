@@ -39,7 +39,7 @@ ai_author = "Claude <noreply@anthropic.com>"
 # Git運用ルール
 commit_on_unit_complete = true
 commit_on_phase_complete = true
-branch_mode = "ask"
+branch_mode = "branch"
 unit_branch_enabled = false
 squash_enabled = false
 merge_method = "ask"
