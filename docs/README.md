@@ -175,7 +175,8 @@ The single-file write (`~/.claude.json`) and the atomic write regex
 pattern (`~/.claude.json.tmp.*`) are consumed only by the macOS Seatbelt
 profile. Linux's systemd backend does not support single-file or
 regex-based write permissions; these files are writable on Linux only
-when the working directory happens to be under `$HOME`.
+when a writable path that contains them is explicitly granted (e.g.,
+`$_cwd` is `$HOME` itself, or via `SANDBOX_EXTRA_ALLOW_WRITE`).
 
 ### Environment Variable Passthrough
 
