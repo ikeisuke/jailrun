@@ -1,7 +1,7 @@
 # AI-DLC プロジェクト設定
 # 生成日: 2026-03-28
 
-starter_kit_version = "2.0.2"
+starter_kit_version = "2.3.0"
 
 [project]
 name = "jailrun"
@@ -35,16 +35,15 @@ validate_user_input = true
 use_env_for_secrets = true
 
 [rules.git]
+ai_author = "Claude <noreply@anthropic.com>"
 # Git運用ルール
 commit_on_unit_complete = true
 commit_on_phase_complete = true
-
-[rules.commit]
-# コミット設定（v1.9.1で追加）
-# ai_author: Co-Authored-By に使用するAI著者情報
-# - 形式: "ツール名 <email>"（推奨）または任意の文字列
-# - デフォルト: "Claude <noreply@anthropic.com>"
-ai_author = "Claude <noreply@anthropic.com>"
+branch_mode = "ask"
+unit_branch_enabled = false
+squash_enabled = false
+merge_method = "ask"
+ai_author_auto_detect = true
 
 [rules.documentation]
 language = "日本語"
@@ -64,7 +63,8 @@ tools = ["codex"]
 # exclude_patterns: レビュー対象から除外するファイルパターン（配列）
 # - デフォルトパターン(.env*, *.key, *.pem, credentials.*, *secret*)は常に適用
 # - ここに追加のパターンを指定可能
-# exclude_patterns = ["*.p12", "config/secrets/**"]
+exclude_patterns = []
+codex_bot_account = "chatgpt-codex-connector[bot]"
 
 [rules.worktree]
 # git worktree設定
@@ -73,20 +73,13 @@ tools = ["codex"]
 # - false: 提案しない（デフォルト）
 enabled = false
 
-[rules.history]
-# 履歴記録設定
-# level: "detailed" | "standard" | "minimal"
-# - detailed: ステップ完了時に記録 + 修正差分も記録
-# - standard: ステップ完了時に記録（デフォルト）
-# - minimal: Unit完了時にまとめて記録
-level = "standard"
-
 [rules.linting]
 # markdownlint設定（v1.8.0で追加）
 # markdown_lint: true | false
 # - true: markdownlint を実行する
 # - false: markdownlint をスキップする（デフォルト）
-markdown_lint = false
+enabled = false
+command = "npx markdownlint-cli2"
 
 [rules.feedback]
 # フィードバック送信機能設定（v1.13.3で追加）
@@ -117,3 +110,33 @@ mode = "semi_auto"
 # - git-only: ローカルファイルのみ（Issueへの記録を禁止）
 # - issue-only: GitHub Issueのみ（ローカルファイルへの記録を禁止）（デフォルト）
 mode = "issue-only"
+
+[rules.release]
+# リリース設定（v2.1.6で追加）
+# changelog: true | false - CHANGELOG自動更新（デフォルト: false）
+# version_tag: true | false - gitタグ作成（デフォルト: false）
+changelog = false
+version_tag = false
+
+[rules.depth_level]
+# 成果物詳細度設定（v1.19.0で追加）
+# level: "minimal" | "standard" | "comprehensive"
+level = "standard"
+history_level = ""
+
+[rules.construction]
+# Construction Phase設定（v2.0.0で追加）
+# max_retry: Self-Healingループの最大リトライ回数（デフォルト: 3）
+max_retry = 3
+
+[rules.cycle]
+# サイクル設定（v2.1.6で追加）
+# mode: "default"
+# git_tracked: true | false - cyclesをgit管理するか（デフォルト: true）
+mode = "default"
+git_tracked = true
+
+[rules.version_check]
+# バージョンチェック設定（v2.1.4でupgrade_checkからリネーム）
+# enabled: true | false（デフォルト: true）
+enabled = true
