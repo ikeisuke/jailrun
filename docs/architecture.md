@@ -34,12 +34,11 @@ jailrun <agent> [args...]
   │    │         ├─ lib/platform/sandbox-linux.sh    Linux systemd-run dispatch
   │    │         │    └─ lib/platform/sandbox-linux-systemd.sh   systemd property generation
   │    │         ├─ lib/platform/git-worktree.sh     Git worktree detection
-  │    │         └─ lib/proxy.py           HTTPS CONNECT proxy (optional)
-  │    │
-  │    ├─ _start_deny_log()          Deny log collection (DEBUG mode, Darwin only)
-  │    ├─ exec <agent-binary> [args...]   Sandboxed execution
-  │    ├─ _stop_deny_log()           Stop deny log collection (DEBUG mode)
-  │    └─ display deny log → stderr  Show collected deny events (DEBUG mode)
+  │    │         ├─ lib/proxy.py           HTTPS CONNECT proxy (optional)
+  │    │         ├─ _start_deny_log()      Deny log collection (DEBUG, Darwin only)
+  │    │         ├─ exec <agent-binary>    Sandboxed execution
+  │    │         ├─ _stop_deny_log()       Stop deny log (DEBUG)
+  │    │         └─ display deny log       Show deny events on stderr (DEBUG)
   │
   ├─ lib/token.sh             Token management (add/rotate/delete/list)
   └─ lib/ruleset.sh           GitHub repository ruleset management

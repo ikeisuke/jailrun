@@ -157,22 +157,25 @@ injecting scoped credentials via environment variables before sandbox exec.
 ### Write Allowances
 
 The sandbox permits writes to specific paths required by Claude Code's
-lock and config update mechanisms:
+lock mechanism. Direct config file updates (`~/.claude.json`) are fully
+covered only on macOS:
 
 | Path / Pattern | Platform | Purpose |
 |----------------|----------|---------|
 | `~/.claude.lock` | macOS + Linux | Lock directory for `~/.claude` (proper-lockfile) |
 | `~/.claude.json.lock` | macOS + Linux | Lock directory for `~/.claude.json` (proper-lockfile) |
-| `~/.claude.json.tmp.*` | macOS only | Atomic write temp file (Seatbelt regex) |
+| `~/.claude.json` | macOS only | Config file (Seatbelt `literal` permission) |
+| `~/.claude.json.tmp.*` | macOS only | Atomic write temp file (Seatbelt `regex` permission) |
 
 Lockfile paths are directories created by proper-lockfile next to their
 target files. Both macOS (Seatbelt `subpath`) and Linux (systemd
 `ReadWritePaths`) grant write access to these paths.
 
-The atomic write regex pattern (`~/.claude.json.tmp.*`) is consumed only
-by the macOS Seatbelt profile. Linux's systemd backend does not support
-regex-based write permissions; target files are covered implicitly when
-the working directory includes `$HOME`.
+The single-file write (`~/.claude.json`) and the atomic write regex
+pattern (`~/.claude.json.tmp.*`) are consumed only by the macOS Seatbelt
+profile. Linux's systemd backend does not support single-file or
+regex-based write permissions; these files are writable on Linux only
+when the working directory happens to be under `$HOME`.
 
 ### Environment Variable Passthrough
 
