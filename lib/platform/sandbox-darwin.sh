@@ -104,3 +104,29 @@ _setup_sandbox() {
 _build_sandbox_exec() {
   printf 'exec %s "$@"\n' "$_sandbox_cmd"
 }
+
+# Start Seatbelt deny event collection via log stream (background).
+# Sets _DENY_LOG_PID and _DENY_LOG_FILE on success.
+_start_deny_log() {
+  _DENY_LOG_FILE="$_tmpdir/jailrun-seatbelt-$$.log"
+  log stream --style ndjson \
+    --predicate 'subsystem == "com.apple.sandbox" AND eventMessage CONTAINS "deny"' \
+    > "$_DENY_LOG_FILE" 2>/dev/null &
+  _DENY_LOG_PID=$!
+  # Verify the process actually started
+  if ! kill -0 "$_DENY_LOG_PID" 2>/dev/null; then
+    echo "[$_WRAPPER_NAME] WARN: failed to start deny log stream" >&2
+    _DENY_LOG_PID=""
+    _DENY_LOG_FILE=""
+  fi
+}
+
+# Stop deny event collection. Clears _DENY_LOG_PID but preserves _DENY_LOG_FILE
+# for upstream DEBUG display.
+_stop_deny_log() {
+  if [ -n "$_DENY_LOG_PID" ]; then
+    kill "$_DENY_LOG_PID" 2>/dev/null || true
+    wait "$_DENY_LOG_PID" 2>/dev/null || true
+    _DENY_LOG_PID=""
+  fi
+}

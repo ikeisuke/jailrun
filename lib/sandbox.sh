@@ -275,6 +275,13 @@ credential_guard_sandbox_exec() {
     _setup_sandbox
   fi
 
+  # Start deny log collection only in debug mode (Darwin: log stream, Linux: no-op)
+  _DENY_LOG_PID=""
+  _DENY_LOG_FILE=""
+  if [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ]; then
+    _start_deny_log
+  fi
+
   # Start proxy if enabled
   _PROXY_PORT=""
   _PROXY_PID=""
@@ -301,12 +308,27 @@ credential_guard_sandbox_exec() {
   fi
   [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$_WRAPPER_NAME] exec: $_sandbox_cmd $*" >&2
 
-  if [ -n "$_PROXY_PID" ]; then
-    # Proxy is running — can't exec, need to wait and clean up
-    "$_tmpdir/exec-proxy.sh" "$@"
+  if [ -n "$_PROXY_PID" ] || [ -n "$_DENY_LOG_PID" ]; then
+    # Proxy or deny log running — can't exec, need to wait and clean up
+    # EXIT trap ensures cleanup even if shell is killed by signal
+    trap '_stop_deny_log; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null' EXIT
+    if [ -n "$_PROXY_PID" ]; then
+      "$_tmpdir/exec-proxy.sh" "$@"
+    else
+      "$_tmpdir/exec.sh" "$@"
+    fi
     _exit_code=$?
-    kill "$_PROXY_PID" 2>/dev/null || true
-    wait "$_PROXY_PID" 2>/dev/null || true
+    trap - EXIT
+    _stop_deny_log
+    if [ -n "$_DENY_LOG_FILE" ] && [ -s "$_DENY_LOG_FILE" ]; then
+      echo "[$_WRAPPER_NAME] === Seatbelt deny log ===" >&2
+      cat "$_DENY_LOG_FILE" >&2
+      echo "[$_WRAPPER_NAME] === end deny log ===" >&2
+    fi
+    if [ -n "$_PROXY_PID" ]; then
+      kill "$_PROXY_PID" 2>/dev/null || true
+      wait "$_PROXY_PID" 2>/dev/null || true
+    fi
     exit "$_exit_code"
   else
     exec "$_tmpdir/exec.sh" "$@"
