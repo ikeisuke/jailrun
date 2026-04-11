@@ -44,6 +44,12 @@ do
 $_p"
 done
 # Platform-specific paths: add only if they already exist
+# SECURITY NOTE: ~/Library/Keychains is granted subpath write access because
+# macOS SecurityServer (securityd) requires file-level writes to Keychain DBs
+# when sandboxed apps refresh their own auth tokens (e.g. OAuth token rotation).
+# GitHub PAT and other sensitive credentials are protected by file-read deny
+# rules on ~/.config/gh and related directories. Narrowing to specific Keychain
+# files is a potential future improvement (requires macOS-specific testing).
 for _p in \
   "$HOME/Library/Application Support/Claude" \
   "$HOME/Library/Application Support/Codex" \
