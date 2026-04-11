@@ -154,6 +154,26 @@ apps that refresh their own auth state through Keychain-backed storage.
 Secrets are still protected by read-deny rules on sensitive files and by
 injecting scoped credentials via environment variables before sandbox exec.
 
+### Write Allowances
+
+The sandbox permits writes to specific paths required by Claude Code's
+lock and config update mechanisms:
+
+| Path / Pattern | Platform | Purpose |
+|----------------|----------|---------|
+| `~/.claude.lock` | macOS + Linux | Lock directory for `~/.claude` (proper-lockfile) |
+| `~/.claude.json.lock` | macOS + Linux | Lock directory for `~/.claude.json` (proper-lockfile) |
+| `~/.claude.json.tmp.*` | macOS only | Atomic write temp file (Seatbelt regex) |
+
+Lockfile paths are directories created by proper-lockfile next to their
+target files. Both macOS (Seatbelt `subpath`) and Linux (systemd
+`ReadWritePaths`) grant write access to these paths.
+
+The atomic write regex pattern (`~/.claude.json.tmp.*`) is consumed only
+by the macOS Seatbelt profile. Linux's systemd backend does not support
+regex-based write permissions; target files are covered implicitly when
+the working directory includes `$HOME`.
+
 ### Environment Variable Passthrough
 
 By default, the sandbox strips sensitive environment variables. To pass custom
@@ -239,6 +259,27 @@ cat ~/.aws/config
 ## Troubleshooting
 
 > For common issues, see the [main README](../README.md#troubleshooting).
+
+### Seatbelt Deny Log (macOS)
+
+When `AGENT_SANDBOX_DEBUG=1` is set, jailrun automatically collects
+Seatbelt deny events during execution and displays them on stderr at exit.
+
+```bash
+AGENT_SANDBOX_DEBUG=1 jailrun claude
+```
+
+Deny events are logged to `$TMPDIR/jailrun-seatbelt-<PID>.log` (PID-based
+filename prevents conflicts during parallel runs). On exit, if the log file
+is non-empty, its contents are printed between `=== Seatbelt deny log ===`
+markers on stderr.
+
+This helps identify which file-system operations the sandbox blocked,
+making it easier to diagnose issues like token refresh failures or
+unexpected permission errors.
+
+> **Note**: This feature is macOS-only. Linux does not currently support
+> deny event logging.
 
 ### Advanced: Finding Blocked Write Paths
 
