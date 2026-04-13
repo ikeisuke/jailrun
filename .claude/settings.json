@@ -53,7 +53,24 @@
       "Skill(reviewing-code)",
       "Skill(reviewing-inception)",
       "Skill(reviewing-security)",
-      "Skill(squash-unit)"
+      "Skill(squash-unit)",
+      "Bash(skills/*/scripts/*)",
+      "Skill(aidlc-feedback)",
+      "Skill(aidlc-migrate)",
+      "Skill(reviewing-inception-intent)",
+      "Skill(reviewing-inception-stories)",
+      "Skill(reviewing-inception-units)",
+      "Skill(reviewing-construction-plan)",
+      "Skill(reviewing-construction-design)",
+      "Skill(reviewing-construction-code)",
+      "Skill(reviewing-construction-integration)",
+      "Skill(reviewing-operations-deploy)",
+      "Skill(reviewing-operations-premerge)",
+      "Skill(write-history)"
+    ],
+    "deny": [
+      "Edit(.claude/plugins/**)",
+      "Write(.claude/plugins/**)"
     ],
     "ask": [
       "Bash(git push*--force *)",

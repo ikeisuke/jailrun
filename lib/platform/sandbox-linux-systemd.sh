@@ -115,6 +115,21 @@ _setup_sandbox() {
       echo "-p ReadWritePaths=$_p"
     done
 
+    # Lockfile directories: proper-lockfile creates <dir>.lock next to target.
+    # Only add ReadWritePaths if the directory already exists. Do NOT pre-create
+    # with mkdir — proper-lockfile uses mkdir to acquire locks, so a pre-created
+    # directory would appear as a permanently held lock. See #23.
+    for _p in $_SANDBOX_ALLOW_WRITE_LOCK_PATHS; do
+      [ -d "$_p" ] || continue
+      echo "-p ReadWritePaths=$_p"
+    done
+
+    # NOTE: _SANDBOX_ALLOW_WRITE_FILES and _SANDBOX_ALLOW_WRITE_REGEXES are
+    # not consumed by this backend. systemd does not support regex-based or
+    # single-file granularity permissions. Target files (e.g. ~/.claude.json,
+    # ~/.claude.json.tmp.*) are covered only if $_cwd includes $HOME.
+    # This platform asymmetry is documented in the design (by design).
+
     # Make sensitive directories inaccessible
     for _p in $_SANDBOX_DENY_READ_PATHS; do
       [ -d "$_p" ] && echo "-p InaccessiblePaths=$_p"

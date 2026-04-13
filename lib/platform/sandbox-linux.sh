@@ -13,3 +13,7 @@ else
   echo "[$_WRAPPER_NAME] ERROR: systemd-run not found. Cannot launch without sandbox." >&2
   exit 1
 fi
+
+# No-op deny log hooks (Linux does not support Seatbelt deny logging)
+_start_deny_log() { :; }
+_stop_deny_log() { :; }

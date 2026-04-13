@@ -34,9 +34,11 @@ jailrun <agent> [args...]
   │    │         ├─ lib/platform/sandbox-linux.sh    Linux systemd-run dispatch
   │    │         │    └─ lib/platform/sandbox-linux-systemd.sh   systemd property generation
   │    │         ├─ lib/platform/git-worktree.sh     Git worktree detection
-  │    │         └─ lib/proxy.py           HTTPS CONNECT proxy (optional)
-  │    │
-  │    └─ exec <agent-binary> [args...]   Sandboxed execution
+  │    │         ├─ lib/proxy.py           HTTPS CONNECT proxy (optional)
+  │    │         ├─ _start_deny_log()      Deny log collection (DEBUG, Darwin only)
+  │    │         ├─ exec <agent-binary>    Sandboxed execution
+  │    │         ├─ _stop_deny_log()       Stop deny log (DEBUG)
+  │    │         └─ display deny log       Show deny events on stderr (DEBUG)
   │
   ├─ lib/token.sh             Token management (add/rotate/delete/list)
   └─ lib/ruleset.sh           GitHub repository ruleset management
@@ -53,7 +55,19 @@ jailrun <agent> [args...]
 | Env-spec generation | Generate SET/UNSET directives for credential isolation |
 | Exec script | Generate exec.sh with env setup + sandbox command |
 | Proxy management | Start/stop HTTPS CONNECT proxy if enabled |
-| Main entry point | Orchestrate sandbox setup, proxy, and exec |
+| Deny log hooks | Platform-specific deny event collection (Darwin: log stream, Linux: no-op) |
+| Main entry point | Orchestrate sandbox setup, proxy, deny log, and exec |
+
+#### Write Path Composition
+
+The allow-write path list is composed of several categories with different
+platform consumption models:
+
+| Write allowance type | Darwin (Seatbelt) | Linux (systemd) |
+|----------------------|-------------------|-----------------|
+| Lock paths (`_SANDBOX_ALLOW_WRITE_LOCK_PATHS`) | `subpath` permission | `ReadWritePaths` |
+| Single-file writes (`_SANDBOX_ALLOW_WRITE_FILES`) | `literal` permission | Not consumed |
+| Regex patterns (`_SANDBOX_ALLOW_WRITE_REGEXES`) | `regex` permission | Not consumed (no regex support) |
 
 ### Double-Sandbox Prevention
 
@@ -65,6 +79,18 @@ When an agent calls another agent (e.g., Claude → Codex via shim), the `_CREDE
 |----------|---------|-----------|
 | macOS | sandbox-darwin.sh | Seatbelt (sandbox-exec) with .sb profile |
 | Linux | sandbox-linux-systemd.sh | systemd-run with security properties |
+
+### Deny Log Architecture
+
+Deny event logging follows an Optional Hook pattern. The orchestrator
+(`sandbox.sh`) manages the lifecycle, while platform backends provide
+the actual implementation or a no-op stub:
+
+| Layer | Responsibility |
+|-------|---------------|
+| sandbox.sh (orchestrator) | Start/stop hooks in DEBUG mode, EXIT trap cleanup, stderr display at exit |
+| sandbox-darwin.sh (backend) | `_start_deny_log()`: start `log stream` with Seatbelt predicate, `_stop_deny_log()`: kill process. Warns on stderr if `log stream` fails to start |
+| sandbox-linux.sh (backend) | No-op (future extension point) |
 
 ### Proxy (Optional)
 
@@ -113,9 +139,9 @@ Default blocked paths (kernel-enforced):
 - `~/.gnupg` — GPG private keys
 - `~/.ssh` — SSH private keys
 
-### Keychain Blocking
+### Keychain / Keyring Handling
 
 | Platform | Mechanism |
 |----------|-----------|
-| macOS | Seatbelt denies `mach-lookup` for `com.apple.SecurityServer` |
+| macOS | Seatbelt allows `mach-lookup` for `com.apple.SecurityServer` and permits writes under `~/Library/Keychains` |
 | Linux | D-Bus session bus socket made inaccessible |

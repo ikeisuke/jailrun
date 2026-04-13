@@ -44,10 +44,17 @@ do
 $_p"
 done
 # Platform-specific paths: add only if they already exist
+# SECURITY NOTE: ~/Library/Keychains is granted subpath write access because
+# macOS SecurityServer (securityd) requires file-level writes to Keychain DBs
+# when sandboxed apps refresh their own auth tokens (e.g. OAuth token rotation).
+# GitHub PAT and other sensitive credentials are protected by file-read deny
+# rules on ~/.config/gh and related directories. Narrowing to specific Keychain
+# files is a potential future improvement (requires macOS-specific testing).
 for _p in \
   "$HOME/Library/Application Support/Claude" \
   "$HOME/Library/Application Support/Codex" \
-  "$HOME/Library/Application Support/kiro-cli"
+  "$HOME/Library/Application Support/kiro-cli" \
+  "$HOME/Library/Keychains"
 do
   [ -d "$_p" ] || continue
   _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
@@ -62,6 +69,19 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
 $_p"
 done
 
+# Lockfile paths: proper-lockfile creates <target>.lock next to the target.
+# Claude Code uses lock directories for multiple auth-related files, including
+# ~/.claude and ~/.claude.json. These paths must be writable even before the
+# lock directory exists.
+_SANDBOX_ALLOW_WRITE_LOCK_PATHS=""
+for _p in \
+  "$HOME/.claude.lock" \
+  "$HOME/.claude.json.lock"
+do
+  _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_SANDBOX_ALLOW_WRITE_LOCK_PATHS
+$_p"
+done
+
 _SANDBOX_ALLOW_WRITE_FILES="$HOME/.claude.json"
 for _p in $SANDBOX_EXTRA_ALLOW_WRITE_FILES; do
   case "$_p" in
@@ -70,6 +90,13 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE_FILES; do
   _SANDBOX_ALLOW_WRITE_FILES="$_SANDBOX_ALLOW_WRITE_FILES
 $_p"
 done
+
+_regex_escape() {
+  printf '%s' "$1" | sed 's/[][(){}.^$+*?|\\]/\\&/g'
+}
+
+_home_regex=$(_regex_escape "$HOME")
+_SANDBOX_ALLOW_WRITE_REGEXES="^${_home_regex}/\\.claude\\.json\\.tmp\\.[^/]+$"
 
 # ============================================================
 # Section 2: Platform backend loading
@@ -248,6 +275,13 @@ credential_guard_sandbox_exec() {
     _setup_sandbox
   fi
 
+  # Start deny log collection only in debug mode (Darwin: log stream, Linux: no-op)
+  _DENY_LOG_PID=""
+  _DENY_LOG_FILE=""
+  if [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ]; then
+    _start_deny_log
+  fi
+
   # Start proxy if enabled
   _PROXY_PORT=""
   _PROXY_PID=""
@@ -274,12 +308,29 @@ credential_guard_sandbox_exec() {
   fi
   [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$_WRAPPER_NAME] exec: $_sandbox_cmd $*" >&2
 
-  if [ -n "$_PROXY_PID" ]; then
-    # Proxy is running — can't exec, need to wait and clean up
-    "$_tmpdir/exec-proxy.sh" "$@"
+  if [ -n "$_PROXY_PID" ] || [ -n "$_DENY_LOG_PID" ]; then
+    # Proxy or deny log running — can't exec, need to wait and clean up
+    # EXIT trap ensures cleanup even if shell is killed by signal.
+    # Must include rm -rf to preserve credentials.sh's tmpdir cleanup.
+    trap '_stop_deny_log; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null; rm -rf "$_tmpdir"' EXIT
+    if [ -n "$_PROXY_PID" ]; then
+      "$_tmpdir/exec-proxy.sh" "$@"
+    else
+      "$_tmpdir/exec.sh" "$@"
+    fi
     _exit_code=$?
-    kill "$_PROXY_PID" 2>/dev/null || true
-    wait "$_PROXY_PID" 2>/dev/null || true
+    trap - EXIT
+    _stop_deny_log
+    if [ -n "$_DENY_LOG_FILE" ] && [ -s "$_DENY_LOG_FILE" ]; then
+      echo "[$_WRAPPER_NAME] === Seatbelt deny log ===" >&2
+      cat "$_DENY_LOG_FILE" >&2
+      echo "[$_WRAPPER_NAME] === end deny log ===" >&2
+    fi
+    if [ -n "$_PROXY_PID" ]; then
+      kill "$_PROXY_PID" 2>/dev/null || true
+      wait "$_PROXY_PID" 2>/dev/null || true
+    fi
+    rm -rf "$_tmpdir"
     exit "$_exit_code"
   else
     exec "$_tmpdir/exec.sh" "$@"
