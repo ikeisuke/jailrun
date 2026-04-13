@@ -310,8 +310,9 @@ credential_guard_sandbox_exec() {
 
   if [ -n "$_PROXY_PID" ] || [ -n "$_DENY_LOG_PID" ]; then
     # Proxy or deny log running — can't exec, need to wait and clean up
-    # EXIT trap ensures cleanup even if shell is killed by signal
-    trap '_stop_deny_log; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null' EXIT
+    # EXIT trap ensures cleanup even if shell is killed by signal.
+    # Must include rm -rf to preserve credentials.sh's tmpdir cleanup.
+    trap '_stop_deny_log; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null; rm -rf "$_tmpdir"' EXIT
     if [ -n "$_PROXY_PID" ]; then
       "$_tmpdir/exec-proxy.sh" "$@"
     else
@@ -329,6 +330,7 @@ credential_guard_sandbox_exec() {
       kill "$_PROXY_PID" 2>/dev/null || true
       wait "$_PROXY_PID" 2>/dev/null || true
     fi
+    rm -rf "$_tmpdir"
     exit "$_exit_code"
   else
     exec "$_tmpdir/exec.sh" "$@"
