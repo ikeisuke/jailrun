@@ -31,6 +31,13 @@ CONF
   [[ "$output" == *".aws"* ]]
   [[ "$output" == *".ssh"* ]]
   [[ "$output" == *".gnupg"* ]]
+  # Cloud service credentials
+  [[ "$output" == *".config/gcloud"* ]]
+  [[ "$output" == *".azure"* ]]
+  [[ "$output" == *".docker"* ]]
+  [[ "$output" == *".kube"* ]]
+  [[ "$output" == *".terraform.d"* ]]
+  [[ "$output" == *".vault-token"* ]]
   [[ "$output" == *"(deny file-write*"* ]]
   # Keychain access is intentionally allowed (apps need it for token refresh)
   [[ "$output" != *'(deny mach-lookup (global-name "com.apple.SecurityServer"))'* ]]

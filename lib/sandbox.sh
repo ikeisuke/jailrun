@@ -15,7 +15,26 @@
 _SANDBOX_DENY_READ_PATHS="$HOME/.aws
 $HOME/.config/gh
 $HOME/.gnupg
-$HOME/.ssh"
+$HOME/.ssh
+$HOME/.config/gcloud
+$HOME/.azure
+$HOME/.oci
+$HOME/.docker
+$HOME/.kube
+$HOME/.wrangler
+$HOME/.config/wrangler
+$HOME/.fly
+$HOME/.config/netlify
+$HOME/.config/vercel
+$HOME/.config/heroku
+$HOME/.terraform.d
+$HOME/.vault-token
+$HOME/.config/op
+$HOME/.config/hub
+$HOME/.config/stripe
+$HOME/.config/firebase
+$HOME/.netrc
+$HOME/.npmrc"
 for _p in $SANDBOX_EXTRA_DENY_READ; do
   case "$_p" in
     "~"*) _p="$HOME${_p#"~"}" ;;

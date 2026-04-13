@@ -134,10 +134,36 @@ Sensitive credentials are never passed as command-line arguments (visible via `p
 ### Read-Denied Paths
 
 Default blocked paths (kernel-enforced):
-- `~/.aws` — AWS credentials
-- `~/.config/gh` — GitHub CLI tokens
-- `~/.gnupg` — GPG private keys
-- `~/.ssh` — SSH private keys
+
+| Path | Description |
+|------|-------------|
+| `~/.aws` | AWS credentials, SSO cache |
+| `~/.config/gh` | GitHub CLI tokens |
+| `~/.gnupg` | GPG private keys |
+| `~/.ssh` | SSH private keys |
+| `~/.config/gcloud` | Google Cloud SDK credentials |
+| `~/.azure` | Azure CLI credentials |
+| `~/.oci` | Oracle Cloud Infrastructure credentials |
+| `~/.docker` | Docker registry auth tokens |
+| `~/.kube` | Kubernetes cluster credentials |
+| `~/.wrangler` | Cloudflare Wrangler (v1) tokens |
+| `~/.config/wrangler` | Cloudflare Wrangler (v2+) tokens |
+| `~/.fly` | Fly.io API tokens |
+| `~/.config/netlify` | Netlify access tokens |
+| `~/.config/vercel` | Vercel auth tokens |
+| `~/.config/heroku` | Heroku API keys |
+| `~/.terraform.d` | Terraform CLI tokens |
+| `~/.vault-token` | HashiCorp Vault token |
+| `~/.config/op` | 1Password CLI tokens |
+| `~/.config/hub` | GitHub Hub (legacy) tokens |
+| `~/.config/stripe` | Stripe CLI API keys |
+| `~/.config/firebase` | Firebase CLI tokens |
+| `~/.netrc` | HTTP credentials (curl, wget) |
+| `~/.npmrc` | npm auth tokens |
+
+Users can add custom paths via `sandbox_extra_deny_read` in config.
+
+**Note**: On Linux (systemd-run), `InaccessiblePaths` requires the path to exist at sandbox startup. Paths created after startup are not protected.
 
 ### Keychain / Keyring Handling
 
