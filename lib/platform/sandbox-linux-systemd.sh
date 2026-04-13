@@ -116,9 +116,11 @@ _setup_sandbox() {
     done
 
     # Lockfile directories: proper-lockfile creates <dir>.lock next to target.
-    # Pre-create so systemd can bind-mount them as read-write.
+    # Only add ReadWritePaths if the directory already exists. Do NOT pre-create
+    # with mkdir — proper-lockfile uses mkdir to acquire locks, so a pre-created
+    # directory would appear as a permanently held lock. See #23.
     for _p in $_SANDBOX_ALLOW_WRITE_LOCK_PATHS; do
-      [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
+      [ -d "$_p" ] || continue
       echo "-p ReadWritePaths=$_p"
     done
 
