@@ -32,6 +32,10 @@ _SANDBOX_PASSTHROUGH_ENV_OVERRIDE="${SANDBOX_PASSTHROUGH_ENV:-}"
 # load config via Python (outputs shell-eval format)
 if [ -f "$CONFIG_FILE" ]; then
   _config_output="$(python3 "$JAILRUN_LIB/config_cli.py" load --app "$_WRAPPER_NAME" --dir "$PWD")"
+  if [ $? -ne 0 ]; then
+    echo "[$_WRAPPER_NAME] config error — aborting (check $CONFIG_FILE)" >&2
+    exit 1
+  fi
   eval "$_config_output"
   unset _config_output
 else
