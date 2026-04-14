@@ -54,7 +54,8 @@ Config file: `~/.config/jailrun/config.toml`
 | `allowed_aws_profiles` | list | `["default"]` | Allowed AWS profiles |
 | `default_aws_profile` | string | `"default"` | Default AWS profile when none specified |
 | `gh_token_name` | string | `"classic"` | Short token name (expanded to `jailrun:github:<name>`) |
-| `sandbox_extra_deny_read` | list | `[]` | Additional read-deny paths |
+| `keychain_profile` | string | `"allow"` | macOS Keychain access: `"allow"` / `"deny"` / `"read-cache-only"` |
+| `sandbox_extra_deny_read` | list | `[]` | Additional read-deny paths (23 paths blocked by default) |
 | `sandbox_extra_allow_write` | list | `[]` | Additional write-allow directories |
 | `sandbox_extra_allow_write_files` | list | `[]` | Additional write-allow files |
 | `sandbox_passthrough_env` | list | `[]` | Env vars to pass through to sandbox |

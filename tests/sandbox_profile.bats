@@ -31,6 +31,13 @@ CONF
   [[ "$output" == *".aws"* ]]
   [[ "$output" == *".ssh"* ]]
   [[ "$output" == *".gnupg"* ]]
+  # Cloud service credentials
+  [[ "$output" == *".config/gcloud"* ]]
+  [[ "$output" == *".azure"* ]]
+  [[ "$output" == *".docker"* ]]
+  [[ "$output" == *".kube"* ]]
+  [[ "$output" == *".terraform.d"* ]]
+  [[ "$output" == *".vault-token"* ]]
   [[ "$output" == *"(deny file-write*"* ]]
   # Keychain access is intentionally allowed (apps need it for token refresh)
   [[ "$output" != *'(deny mach-lookup (global-name "com.apple.SecurityServer"))'* ]]
@@ -64,7 +71,89 @@ CONF
   [[ "$output" == *'.claude.json.lock")'* ]]
 }
 
-@test "seatbelt profile allows writing under Library/Keychains" {
+@test "seatbelt profile allows Keychain writes with keychain_profile=allow" {
+  setup_jailrun_env
+  export _CREDENTIAL_GUARD_SANDBOXED=""
+
+  run env -u _CREDENTIAL_GUARD_SANDBOXED sh -c '
+    export JAILRUN_LIB="'"$JAILRUN_LIB"'"
+    export WRAPPER_NAME=claude
+    export XDG_CONFIG_HOME="'"$(mktemp -d)"'"
+    mkdir -p "$XDG_CONFIG_HOME/jailrun"
+    mkdir -p "$HOME/Library/Keychains"
+    cat > "$XDG_CONFIG_HOME/jailrun/config.toml" <<CONF
+[global]
+allowed_aws_profiles = []
+default_aws_profile = ""
+gh_token_name = "classic"
+keychain_profile = "allow"
+CONF
+    . "$JAILRUN_LIB/config.sh"
+    . "$JAILRUN_LIB/credentials.sh"
+    . "$JAILRUN_LIB/sandbox.sh"
+    _setup_sandbox
+    grep -n "Library/Keychains" "$_tmpdir/sandbox.sb"
+  ' 2>/dev/null
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'Library/Keychains'* ]]
+}
+
+@test "seatbelt profile blocks Keychain writes with keychain_profile=deny" {
+  setup_jailrun_env
+  export _CREDENTIAL_GUARD_SANDBOXED=""
+
+  run env -u _CREDENTIAL_GUARD_SANDBOXED sh -c '
+    export JAILRUN_LIB="'"$JAILRUN_LIB"'"
+    export WRAPPER_NAME=claude
+    export XDG_CONFIG_HOME="'"$(mktemp -d)"'"
+    mkdir -p "$XDG_CONFIG_HOME/jailrun"
+    mkdir -p "$HOME/Library/Keychains"
+    cat > "$XDG_CONFIG_HOME/jailrun/config.toml" <<CONF
+[global]
+allowed_aws_profiles = []
+default_aws_profile = ""
+gh_token_name = "classic"
+keychain_profile = "deny"
+CONF
+    . "$JAILRUN_LIB/config.sh"
+    . "$JAILRUN_LIB/credentials.sh"
+    . "$JAILRUN_LIB/sandbox.sh"
+    _setup_sandbox
+    ! grep -q "Library/Keychains" "$_tmpdir/sandbox.sb"
+  ' 2>/dev/null
+
+  [ "$status" -eq 0 ]
+}
+
+@test "seatbelt profile blocks Keychain writes with keychain_profile=read-cache-only" {
+  setup_jailrun_env
+  export _CREDENTIAL_GUARD_SANDBOXED=""
+
+  run env -u _CREDENTIAL_GUARD_SANDBOXED sh -c '
+    export JAILRUN_LIB="'"$JAILRUN_LIB"'"
+    export WRAPPER_NAME=claude
+    export XDG_CONFIG_HOME="'"$(mktemp -d)"'"
+    mkdir -p "$XDG_CONFIG_HOME/jailrun"
+    mkdir -p "$HOME/Library/Keychains"
+    cat > "$XDG_CONFIG_HOME/jailrun/config.toml" <<CONF
+[global]
+allowed_aws_profiles = []
+default_aws_profile = ""
+gh_token_name = "classic"
+keychain_profile = "read-cache-only"
+CONF
+    . "$JAILRUN_LIB/config.sh"
+    . "$JAILRUN_LIB/credentials.sh"
+    . "$JAILRUN_LIB/sandbox.sh"
+    _setup_sandbox
+    ! grep -q "Library/Keychains" "$_tmpdir/sandbox.sb"
+  ' 2>/dev/null
+
+  [ "$status" -eq 0 ]
+}
+
+@test "seatbelt profile defaults to allow when keychain_profile unset" {
   setup_jailrun_env
   export _CREDENTIAL_GUARD_SANDBOXED=""
 
@@ -88,7 +177,7 @@ CONF
   ' 2>/dev/null
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *'subpath "'$HOME'/Library/Keychains"'* ]]
+  [[ "$output" == *'Library/Keychains'* ]]
 }
 
 @test "seatbelt profile includes temp config regex for atomic writes" {

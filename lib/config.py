@@ -37,7 +37,10 @@ DEFAULTS: dict = {
     "sandbox_passthrough_env": [],
     "proxy_enabled": False,
     "proxy_allow_domains": [],
+    "keychain_profile": "allow",
 }
+
+VALID_KEYCHAIN_PROFILES = {"deny", "read-cache-only", "allow"}
 
 LIST_KEYS = {
     "allowed_aws_profiles",
@@ -71,6 +74,13 @@ default_aws_profile = "default"
 
 # environment variables to pass through to sandbox
 # sandbox_passthrough_env = ["ANTHROPIC_API_KEY"]
+
+# --- Keychain access profile (macOS only) ---
+# Controls ~/Library/Keychains write access in the Seatbelt sandbox.
+#   "allow"           - full write access (default, needed for in-sandbox auth)
+#   "deny"            - block all Keychain writes (authenticate outside sandbox first)
+#   "read-cache-only" - same as deny (cached auth state is read via SecurityServer)
+# keychain_profile = "allow"
 
 # --- Network proxy (HTTPS CONNECT with domain allowlist) ---
 # proxy_enabled = false
@@ -190,6 +200,14 @@ def resolve_config(app: str = "", directory: str = "") -> dict:
         dir_settings = {k: v for k, v in dir_conf.items() if k != "profile"}
         if dir_settings:
             result = merge_layer(result, dir_settings, append_lists=True)
+
+    # Validate enum fields
+    kp = result.get("keychain_profile", "allow")
+    if kp not in VALID_KEYCHAIN_PROFILES:
+        raise ValueError(
+            f'Invalid keychain_profile: "{kp}". '
+            f"Must be one of: {', '.join(sorted(VALID_KEYCHAIN_PROFILES))}"
+        )
 
     return result
 

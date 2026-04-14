@@ -130,9 +130,11 @@ _setup_sandbox() {
     # ~/.claude.json.tmp.*) are covered only if $_cwd includes $HOME.
     # This platform asymmetry is documented in the design (by design).
 
-    # Make sensitive directories inaccessible
+    # Make sensitive paths inaccessible (directories and files).
+    # NOTE: InaccessiblePaths requires the path to exist; non-existent paths
+    # are skipped. Paths created after sandbox startup are NOT protected.
     for _p in $_SANDBOX_DENY_READ_PATHS; do
-      [ -d "$_p" ] && echo "-p InaccessiblePaths=$_p"
+      [ -e "$_p" ] && echo "-p InaccessiblePaths=$_p"
     done
     IFS="$_OLD_IFS"
   } > "$_props"

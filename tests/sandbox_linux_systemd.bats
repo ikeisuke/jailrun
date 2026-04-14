@@ -153,13 +153,29 @@ run_setup_sandbox() {
   rm -rf "$_write_dir"
 }
 
-@test "SANDBOX_DENY_READ_PATHS adds InaccessiblePaths" {
+@test "SANDBOX_DENY_READ_PATHS adds InaccessiblePaths for directories" {
   _deny_dir=$(mktemp -d)
   _SANDBOX_DENY_READ_PATHS="$_deny_dir"
   run_setup_sandbox
   [ "$status" -eq 0 ]
   [[ "$output" == *"InaccessiblePaths=$_deny_dir"* ]]
   rm -rf "$_deny_dir"
+}
+
+@test "SANDBOX_DENY_READ_PATHS adds InaccessiblePaths for files" {
+  _deny_file=$(mktemp)
+  _SANDBOX_DENY_READ_PATHS="$_deny_file"
+  run_setup_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"InaccessiblePaths=$_deny_file"* ]]
+  rm -f "$_deny_file"
+}
+
+@test "SANDBOX_DENY_READ_PATHS skips non-existent paths" {
+  _SANDBOX_DENY_READ_PATHS="/nonexistent/path/for/testing"
+  run_setup_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"InaccessiblePaths=/nonexistent/path/for/testing"* ]]
 }
 
 # --- Git worktree ---

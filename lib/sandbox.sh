@@ -15,7 +15,26 @@
 _SANDBOX_DENY_READ_PATHS="$HOME/.aws
 $HOME/.config/gh
 $HOME/.gnupg
-$HOME/.ssh"
+$HOME/.ssh
+$HOME/.config/gcloud
+$HOME/.azure
+$HOME/.oci
+$HOME/.docker
+$HOME/.kube
+$HOME/.wrangler
+$HOME/.config/wrangler
+$HOME/.fly
+$HOME/.config/netlify
+$HOME/.config/vercel
+$HOME/.config/heroku
+$HOME/.terraform.d
+$HOME/.vault-token
+$HOME/.config/op
+$HOME/.config/hub
+$HOME/.config/stripe
+$HOME/.config/firebase
+$HOME/.netrc
+$HOME/.npmrc"
 for _p in $SANDBOX_EXTRA_DENY_READ; do
   case "$_p" in
     "~"*) _p="$HOME${_p#"~"}" ;;
@@ -44,22 +63,32 @@ do
 $_p"
 done
 # Platform-specific paths: add only if they already exist
-# SECURITY NOTE: ~/Library/Keychains is granted subpath write access because
-# macOS SecurityServer (securityd) requires file-level writes to Keychain DBs
-# when sandboxed apps refresh their own auth tokens (e.g. OAuth token rotation).
-# GitHub PAT and other sensitive credentials are protected by file-read deny
-# rules on ~/.config/gh and related directories. Narrowing to specific Keychain
-# files is a potential future improvement (requires macOS-specific testing).
 for _p in \
   "$HOME/Library/Application Support/Claude" \
   "$HOME/Library/Application Support/Codex" \
-  "$HOME/Library/Application Support/kiro-cli" \
-  "$HOME/Library/Keychains"
+  "$HOME/Library/Application Support/kiro-cli"
 do
   [ -d "$_p" ] || continue
   _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
 $_p"
 done
+# Keychain write access: controlled by keychain_profile config setting.
+# SecurityServer (securityd) requires file-level writes to Keychain DBs for
+# in-sandbox auth token refresh. file-read deny has no effect on Keychain reads
+# because SecurityServer reads Keychain DBs in its own process context.
+# See: .aidlc/cycles/v0.2.1/design-artifacts/keychain-investigation-report.md
+case "${KEYCHAIN_PROFILE:-allow}" in
+  allow)
+    if [ -d "$HOME/Library/Keychains" ]; then
+      _SANDBOX_ALLOW_WRITE_PATHS="$_SANDBOX_ALLOW_WRITE_PATHS
+$HOME/Library/Keychains"
+    fi
+    ;;
+  deny|read-cache-only)
+    # ~/Library/Keychains not added — Keychain writes blocked by Seatbelt.
+    # Users must authenticate outside the sandbox first.
+    ;;
+esac
 for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
   case "$_p" in
     "~"*) _p="$HOME${_p#"~"}" ;;

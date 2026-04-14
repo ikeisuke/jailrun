@@ -129,16 +129,19 @@ AGENT_AWS_PROFILES  →  AWS_PROFILE  →  DEFAULT_AWS_PROFILE in config
 
 ### Read-Denied Paths
 
-These directories are blocked at kernel level:
+23 directories are blocked at kernel level by default:
 
-| Path | Contents |
-|------|----------|
-| `~/.aws` | AWS credentials, SSO cache, config |
-| `~/.config/gh` | GitHub CLI tokens |
-| `~/.gnupg` | GPG private keys |
-| `~/.ssh` | SSH private keys, known_hosts |
+| Category | Paths |
+|----------|-------|
+| Cloud services | `~/.aws`, `~/.config/gcloud`, `~/.azure`, `~/.oci` |
+| VCS / Auth | `~/.config/gh`, `~/.gnupg`, `~/.ssh` |
+| Container / K8s | `~/.docker`, `~/.kube` |
+| CDN / Edge / Deploy | `~/.wrangler`, `~/.config/wrangler`, `~/.fly`, `~/.config/netlify`, `~/.config/vercel`, `~/.config/heroku` |
+| IaC / Secrets | `~/.terraform.d`, `~/.vault-token`, `~/.config/op` |
+| Dev tools | `~/.config/hub`, `~/.config/stripe`, `~/.config/firebase` |
+| Package managers | `~/.netrc`, `~/.npmrc` |
 
-Additional paths can be added via `SANDBOX_EXTRA_DENY_READ` in config.
+Additional paths can be added via `sandbox_extra_deny_read` in config.
 
 ### Keychain / Keyring Access
 
@@ -146,11 +149,17 @@ The sandbox treats OS credential stores differently by platform:
 
 | Platform | Mechanism |
 |----------|-----------|
-| macOS | Seatbelt keeps `com.apple.SecurityServer` reachable and permits writes under `~/Library/Keychains` |
+| macOS | Seatbelt keeps `com.apple.SecurityServer` reachable; `~/Library/Keychains` write access controlled by `keychain_profile` |
 | Linux | D-Bus session bus socket made inaccessible via `InaccessiblePaths` |
 
-On macOS, this is required for native TLS trust evaluation and for sandboxed
-apps that refresh their own auth state through Keychain-backed storage.
+On macOS, `keychain_profile` controls Keychain write access in the sandbox:
+
+| Profile | Behavior |
+|---------|----------|
+| `allow` (default) | Full write access to `~/Library/Keychains`; enables in-sandbox auth token refresh |
+| `deny` | Block all Keychain writes; authenticate outside sandbox first |
+| `read-cache-only` | Same as `deny`; cached auth state is read via SecurityServer, not file access |
+
 Secrets are still protected by read-deny rules on sensitive files and by
 injecting scoped credentials via environment variables before sandbox exec.
 
