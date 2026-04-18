@@ -11,6 +11,13 @@ _setup_sandbox() {
   local _cwd="$PWD"
   _detect_git_worktree
 
+  # Try AppArmor for filesystem control
+  _APPARMOR_PROFILE_LOADED=""
+  if [ "${_APPARMOR_AVAILABLE:-}" = "1" ]; then
+    _build_apparmor_profile
+    _load_apparmor_profile || true
+  fi
+
   _sandbox_cmd="systemd-run"
   local _props="$_tmpdir/systemd-props"
   {
@@ -42,10 +49,12 @@ _setup_sandbox() {
       echo '-p IPAddressAllow=::1/128'
     fi
     # Filesystem
-    echo '-p ProtectSystem=strict'
-    echo '-p ProtectHome=read-only'
-    echo "-p ReadWritePaths=$_cwd"
-    echo "-p ReadWritePaths=$_tmpdir"
+    if [ -z "${_APPARMOR_PROFILE_LOADED:-}" ]; then
+      echo '-p ProtectSystem=strict'
+      echo '-p ProtectHome=read-only'
+      echo "-p ReadWritePaths=$_cwd"
+      echo "-p ReadWritePaths=$_tmpdir"
+    fi
     # Kernel protection
     echo '-p ProtectProc=invisible'
     echo '-p ProtectClock=yes'
@@ -66,14 +75,9 @@ _setup_sandbox() {
     echo '-p UMask=0077'
     echo '-p CoredumpFilter=0'
     echo '-p KeyringMode=private'
+
     # Block D-Bus session bus (prevents GNOME Keyring / secret-tool access)
-    # 1. Block default XDG user bus socket
-    _xdg_runtime="${XDG_RUNTIME_DIR:-}"
-    if [ -n "$_xdg_runtime" ] && [ -S "$_xdg_runtime/bus" ]; then
-      echo "-p InaccessiblePaths=$_xdg_runtime/bus"
-    fi
-    # 2. Block socket from DBUS_SESSION_BUS_ADDRESS if it contains a file path
-    #    Handles formats: unix:path=/x, unix:guid=...,path=/x, etc.
+    # Detect socket type for _DBUS_NEEDS_ENV_CLEAR (used by env-spec)
     _dbus_addr="${DBUS_SESSION_BUS_ADDRESS:-}"
     _dbus_sock=""
     case "$_dbus_addr" in
@@ -83,60 +87,79 @@ _setup_sandbox() {
         _dbus_sock="${_dbus_tail%%,*}"
         _dbus_sock="${_dbus_sock%%;*}" ;;
     esac
-    if [ -n "$_dbus_sock" ] && [ -S "$_dbus_sock" ]; then
-      echo "-p InaccessiblePaths=$_dbus_sock"
-    else
+    if [ -z "$_dbus_sock" ] || [ ! -S "$_dbus_sock" ]; then
       # Abstract sockets or unresolvable: clear the address as fallback
       _DBUS_NEEDS_ENV_CLEAR=1
     fi
-    # Explicit write protection for config directory
-    echo "-p ReadOnlyPaths=${CONFIG_DIR:-$HOME/.config/jailrun}"
-
-    # Git worktree
-    if [ -n "$_git_parent_toplevel" ]; then
-      echo "-p ReadWritePaths=$_git_parent_toplevel"
-      if [ -n "$_other_worktrees" ]; then
-        _OLD_IFS="$IFS"; IFS="
-"
-        for _wt in $_other_worktrees; do
-          [ -d "$_wt" ] && echo "-p InaccessiblePaths=$_wt"
-        done
-        IFS="$_OLD_IFS"
+    if [ -z "${_APPARMOR_PROFILE_LOADED:-}" ]; then
+      # Block via InaccessiblePaths (systemd filesystem control mode)
+      _xdg_runtime="${XDG_RUNTIME_DIR:-}"
+      if [ -n "$_xdg_runtime" ] && [ -S "$_xdg_runtime/bus" ]; then
+        echo "-p InaccessiblePaths=$_xdg_runtime/bus"
       fi
-    elif [ -n "$_git_common_dir" ]; then
-      echo "-p ReadWritePaths=$_git_common_dir"
+      if [ -n "$_dbus_sock" ] && [ -S "$_dbus_sock" ]; then
+        echo "-p InaccessiblePaths=$_dbus_sock"
+      fi
     fi
 
-    # Make whitelisted directories writable
-    _OLD_IFS="$IFS"; IFS="
+    if [ -z "${_APPARMOR_PROFILE_LOADED:-}" ]; then
+      # --- systemd filesystem control (fallback when AppArmor unavailable) ---
+
+      # Explicit write protection for config directory
+      echo "-p ReadOnlyPaths=${CONFIG_DIR:-$HOME/.config/jailrun}"
+
+      # Git worktree
+      if [ -n "$_git_parent_toplevel" ]; then
+        echo "-p ReadWritePaths=$_git_parent_toplevel"
+        if [ -n "$_other_worktrees" ]; then
+          _OLD_IFS="$IFS"; IFS="
 "
-    for _p in $_SANDBOX_ALLOW_WRITE_PATHS; do
-      [ -d "$_p" ] || continue
-      echo "-p ReadWritePaths=$_p"
-    done
+          for _wt in $_other_worktrees; do
+            [ -d "$_wt" ] && echo "-p InaccessiblePaths=$_wt"
+          done
+          IFS="$_OLD_IFS"
+        fi
+      elif [ -n "$_git_common_dir" ]; then
+        echo "-p ReadWritePaths=$_git_common_dir"
+      fi
 
-    # Lockfile directories: proper-lockfile creates <dir>.lock next to target.
-    # Only add ReadWritePaths if the directory already exists. Do NOT pre-create
-    # with mkdir — proper-lockfile uses mkdir to acquire locks, so a pre-created
-    # directory would appear as a permanently held lock. See #23.
-    for _p in $_SANDBOX_ALLOW_WRITE_LOCK_PATHS; do
-      [ -d "$_p" ] || continue
-      echo "-p ReadWritePaths=$_p"
-    done
+      # Make whitelisted directories writable
+      _OLD_IFS="$IFS"; IFS="
+"
+      for _p in $_SANDBOX_ALLOW_WRITE_PATHS; do
+        [ -d "$_p" ] || continue
+        echo "-p ReadWritePaths=$_p"
+      done
 
-    # NOTE: _SANDBOX_ALLOW_WRITE_FILES and _SANDBOX_ALLOW_WRITE_REGEXES are
-    # not consumed by this backend. systemd does not support regex-based or
-    # single-file granularity permissions. Target files (e.g. ~/.claude.json,
-    # ~/.claude.json.tmp.*) are covered only if $_cwd includes $HOME.
-    # This platform asymmetry is documented in the design (by design).
+      # Lockfile directories: proper-lockfile creates <dir>.lock next to target.
+      # Only add ReadWritePaths if the directory already exists. Do NOT pre-create
+      # with mkdir — proper-lockfile uses mkdir to acquire locks, so a pre-created
+      # directory would appear as a permanently held lock. See #23.
+      for _p in $_SANDBOX_ALLOW_WRITE_LOCK_PATHS; do
+        [ -d "$_p" ] || continue
+        echo "-p ReadWritePaths=$_p"
+      done
 
-    # Make sensitive paths inaccessible (directories and files).
-    # NOTE: InaccessiblePaths requires the path to exist; non-existent paths
-    # are skipped. Paths created after sandbox startup are NOT protected.
-    for _p in $_SANDBOX_DENY_READ_PATHS; do
-      [ -e "$_p" ] && echo "-p InaccessiblePaths=$_p"
-    done
-    IFS="$_OLD_IFS"
+      # NOTE: _SANDBOX_ALLOW_WRITE_FILES and _SANDBOX_ALLOW_WRITE_REGEXES are
+      # not consumed in systemd-only mode. systemd does not support regex-based
+      # or single-file granularity permissions. Target files (e.g. ~/.claude.json,
+      # ~/.claude.json.tmp.*) are covered only if $_cwd includes $HOME.
+
+      # Make sensitive paths inaccessible (directories and files).
+      # NOTE: InaccessiblePaths requires the path to exist; non-existent paths
+      # are skipped. Paths created after sandbox startup are NOT protected.
+      for _p in $_SANDBOX_DENY_READ_PATHS; do
+        [ -e "$_p" ] && echo "-p InaccessiblePaths=$_p"
+      done
+
+      # NOTE: _SANDBOX_DENY_READ_REGEXES is not consumed in systemd-only mode.
+      # Filename-based deny (sandbox_deny_read_names) requires AppArmor.
+
+      IFS="$_OLD_IFS"
+    else
+      # --- AppArmor handles all filesystem control ---
+      echo "-p AppArmorProfile=$_apparmor_profile_name"
+    fi
   } > "$_props"
 }
 

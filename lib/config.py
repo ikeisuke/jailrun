@@ -31,6 +31,7 @@ DEFAULTS: dict = {
     "allowed_aws_profiles": ["default"],
     "default_aws_profile": "default",
     "default_region": "ap-northeast-1",
+    "sandbox_deny_read_names": [],
     "sandbox_extra_deny_read": [],
     "sandbox_extra_allow_write": [],
     "sandbox_extra_allow_write_files": [],
@@ -44,6 +45,7 @@ VALID_KEYCHAIN_PROFILES = {"deny", "read-cache-only", "allow"}
 
 LIST_KEYS = {
     "allowed_aws_profiles",
+    "sandbox_deny_read_names",
     "sandbox_extra_deny_read",
     "sandbox_extra_allow_write",
     "sandbox_extra_allow_write_files",
@@ -62,6 +64,9 @@ gh_token_name = "classic"
 allowed_aws_profiles = ["default"]
 default_aws_profile = "default"
 # default_region = "ap-northeast-1"
+
+# deny read by filename (matched anywhere in the filesystem, macOS only)
+# sandbox_deny_read_names = [".env"]
 
 # additional read-deny paths (default: ~/.aws ~/.ssh ~/.gnupg ~/.config/gh)
 # sandbox_extra_deny_read = []
