@@ -2,8 +2,9 @@
 # macOS Seatbelt sandbox backend
 # Sourced by sandbox.sh
 #
-# Requires: $_tmpdir, $_SANDBOX_DENY_READ_PATHS, $_SANDBOX_ALLOW_WRITE_PATHS,
-#           $_SANDBOX_ALLOW_WRITE_FILES to be set (newline-separated)
+# Requires: $_tmpdir, $_SANDBOX_DENY_READ_PATHS, $_SANDBOX_DENY_READ_REGEXES,
+#           $_SANDBOX_ALLOW_WRITE_PATHS, $_SANDBOX_ALLOW_WRITE_FILES
+#           to be set (newline-separated)
 # Provides: _setup_sandbox(), _build_sandbox_exec()
 
 . "$JAILRUN_LIB/platform/git-worktree.sh"
@@ -43,6 +44,9 @@ _setup_sandbox() {
 "
     for _p in $_SANDBOX_DENY_READ_PATHS; do
       echo "  (subpath \"$(_seatbelt_escape "$_p")\")"
+    done
+    for _re in $_SANDBOX_DENY_READ_REGEXES; do
+      echo "  (regex #\"$_re\")"
     done
     IFS="$_OLD_IFS"
     echo ')'
@@ -130,3 +134,6 @@ _stop_deny_log() {
     _DENY_LOG_PID=""
   fi
 }
+
+# No-op: AppArmor cleanup is Linux-only
+_cleanup_sandbox() { :; }

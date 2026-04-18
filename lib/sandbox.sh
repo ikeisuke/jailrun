@@ -127,6 +127,14 @@ _regex_escape() {
 _home_regex=$(_regex_escape "$HOME")
 _SANDBOX_ALLOW_WRITE_REGEXES="^${_home_regex}/\\.claude\\.json\\.tmp\\.[^/]+$"
 
+# Build deny-read regexes from filename list (e.g. ".env" -> /\.env$)
+_SANDBOX_DENY_READ_REGEXES=""
+for _name in $SANDBOX_DENY_READ_NAMES; do
+  _escaped=$(_regex_escape "$_name")
+  _SANDBOX_DENY_READ_REGEXES="$_SANDBOX_DENY_READ_REGEXES
+/$_escaped\$"
+done
+
 # ============================================================
 # Section 2: Platform backend loading
 # ============================================================
@@ -337,11 +345,11 @@ credential_guard_sandbox_exec() {
   fi
   [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && echo "[$_WRAPPER_NAME] exec: $_sandbox_cmd $*" >&2
 
-  if [ -n "$_PROXY_PID" ] || [ -n "$_DENY_LOG_PID" ]; then
+  if [ -n "$_PROXY_PID" ] || [ -n "$_DENY_LOG_PID" ] || [ -n "${_APPARMOR_PROFILE_LOADED:-}" ]; then
     # Proxy or deny log running — can't exec, need to wait and clean up
     # EXIT trap ensures cleanup even if shell is killed by signal.
     # Must include rm -rf to preserve credentials.sh's tmpdir cleanup.
-    trap '_stop_deny_log; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null; rm -rf "$_tmpdir"' EXIT
+    trap '_stop_deny_log; _cleanup_sandbox; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null; rm -rf "$_tmpdir"' EXIT
     if [ -n "$_PROXY_PID" ]; then
       "$_tmpdir/exec-proxy.sh" "$@"
     else
@@ -359,6 +367,7 @@ credential_guard_sandbox_exec() {
       kill "$_PROXY_PID" 2>/dev/null || true
       wait "$_PROXY_PID" 2>/dev/null || true
     fi
+    _cleanup_sandbox
     rm -rf "$_tmpdir"
     exit "$_exit_code"
   else
