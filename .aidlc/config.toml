@@ -1,7 +1,7 @@
 # AI-DLC プロジェクト設定
 # 生成日: 2026-03-28
 
-starter_kit_version = "2.3.0"
+starter_kit_version = "2.3.5"
 
 [project]
 name = "jailrun"
@@ -43,6 +43,7 @@ branch_mode = "branch"
 unit_branch_enabled = false
 squash_enabled = false
 merge_method = "ask"
+draft_pr = "ask"
 ai_author_auto_detect = true
 
 [rules.documentation]
