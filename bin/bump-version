@@ -1,0 +1,329 @@
+#!/bin/sh
+# bump-version - update jailrun VERSION SoT, HISTORY.md entry and git tag in one shot.
+#
+# Usage: bump-version <new_version> [--message <text>] [--tag] [--dry-run]
+#
+#   <new_version>  vMAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH (normalized to MAJOR.MINOR.PATCH)
+#   --message      title text for the new HISTORY.md heading (stdin 1 line if omitted)
+#   --tag          create git tag v<normalized> (fails if tag exists or worktree dirty)
+#   --dry-run      print intended diff only, no file writes or git operations.
+
+set -eu
+
+_ARG_VERSION=""
+_ARG_MESSAGE=""
+_ARG_MESSAGE_GIVEN=0
+_ARG_TAG=0
+_ARG_DRY_RUN=0
+
+_BACKUP_BIN_JAILRUN=""
+_BACKUP_HISTORY=""
+
+die() {
+  printf '[bump-version] ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'USAGE'
+Usage: bump-version <new_version> [--message <text>] [--tag] [--dry-run]
+
+Arguments:
+  <new_version>        vMAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH
+
+Options:
+  --message <text>     HISTORY.md heading title (read from stdin if omitted)
+  --tag                create git tag v<normalized> (fails on existing tag or dirty worktree)
+  --dry-run            print diff only, no file writes or git operations
+  --help, -h           show this usage and exit 0
+USAGE
+}
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      --message)
+        shift
+        [ $# -gt 0 ] || die "--message requires a value"
+        _ARG_MESSAGE="$1"
+        _ARG_MESSAGE_GIVEN=1
+        shift
+        ;;
+      --tag)
+        _ARG_TAG=1
+        shift
+        ;;
+      --dry-run)
+        _ARG_DRY_RUN=1
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        die "unknown option: $1"
+        ;;
+      *)
+        if [ -z "$_ARG_VERSION" ]; then
+          _ARG_VERSION="$1"
+          shift
+        else
+          die "unexpected extra positional argument: $1"
+        fi
+        ;;
+    esac
+  done
+
+  [ -n "$_ARG_VERSION" ] || { usage >&2; die "missing positional argument <new_version>"; }
+}
+
+validate_semver() {
+  _raw="$1"
+  # POSIX ERE: ^v?[0-9]+\.[0-9]+\.[0-9]+$
+  if ! printf '%s' "$_raw" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+    die "invalid version format: $_raw (expected vMAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH)"
+  fi
+}
+
+normalize_version() {
+  # strip leading 'v' if any
+  printf '%s' "${1#v}"
+}
+
+resolve_title() {
+  if [ "$_ARG_MESSAGE_GIVEN" -eq 1 ]; then
+    printf '%s' "$_ARG_MESSAGE"
+    return 0
+  fi
+  # read one line from stdin
+  if IFS= read -r _title; then
+    # reject extra lines (multi-line stdin is invalid)
+    if IFS= read -r _extra; then
+      die "stdin title must be a single line (extra line detected)"
+    fi
+    printf '%s' "$_title"
+  else
+    die "--message not provided and stdin is empty"
+  fi
+}
+
+validate_title() {
+  _t="$1"
+  # reject empty or whitespace-only
+  _stripped=$(printf '%s' "$_t" | tr -d '[:space:]')
+  [ -n "$_stripped" ] || die "title must not be empty or whitespace only"
+  # reject embedded newlines (case with a literal newline is POSIX-safe;
+  # $(printf '\n') would be stripped by command substitution and match anything)
+  case "$_t" in
+    *"
+"*) die "title must not contain newline characters" ;;
+  esac
+}
+
+read_current_version() {
+  [ -f bin/jailrun ] || die "bin/jailrun not found in current directory"
+  _line=$(grep -E '^VERSION="[^"]*"$' bin/jailrun || true)
+  [ -n "$_line" ] || die "VERSION line not found in bin/jailrun"
+  _count=$(printf '%s\n' "$_line" | wc -l | tr -d ' ')
+  [ "$_count" = "1" ] || die "multiple VERSION lines found in bin/jailrun"
+  printf '%s' "$_line" | sed -E 's/^VERSION="([^"]*)"$/\1/'
+}
+
+assert_not_duplicate_version() {
+  _current="$1"
+  _new="$2"
+  [ "$_current" != "$_new" ] || die "new version equals current VERSION ($_current); nothing to bump"
+}
+
+assert_history_exists() {
+  [ -f HISTORY.md ] || die "HISTORY.md not found in current directory"
+}
+
+assert_history_well_formed() {
+  _first=$(sed -n '1p' HISTORY.md)
+  [ "$_first" = "# Change History" ] || die "HISTORY.md must start with '# Change History'"
+  _heading=$(grep -E '^## ' HISTORY.md | head -n 1)
+  [ -n "$_heading" ] || die "HISTORY.md has no '## ' heading"
+  # Strict heading pattern: '## vMAJOR.MINOR.PATCH \u2014 <title> (YYYY-MM-DD)'
+  # The em dash (U+2014) is encoded as the literal 3-byte UTF-8 sequence.
+  _em_dash=$(printf '\342\200\224')
+  _pattern='^## v[0-9]+\.[0-9]+\.[0-9]+ '"$_em_dash"' .+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$'
+  if ! printf '%s' "$_heading" | grep -Eq "$_pattern"; then
+    die "HISTORY.md first heading must match '## vMAJOR.MINOR.PATCH \u2014 <title> (YYYY-MM-DD)'"
+  fi
+}
+
+assert_not_duplicate_in_history() {
+  _norm="$1"
+  if grep -Eq "^## v${_norm} " HISTORY.md; then
+    die "HISTORY.md already contains entry for v${_norm}"
+  fi
+}
+
+assert_no_existing_tag() {
+  _norm="$1"
+  _existing=$(git tag --list "v${_norm}")
+  [ -z "$_existing" ] || die "git tag v${_norm} already exists"
+}
+
+assert_clean_worktree() {
+  _status=$(git status --porcelain)
+  [ -z "$_status" ] || die "working tree has uncommitted changes; commit or stash before --tag"
+}
+
+render_dry_run_diff() {
+  _current="$1"
+  _norm="$2"
+  _title="$3"
+  _today="$4"
+  _want_tag="$5"
+
+  printf '[bump-version] (dry-run) VERSION: %s -> %s\n' "$_current" "$_norm"
+  printf '[bump-version] (dry-run) HISTORY.md: would prepend:\n'
+  printf '## v%s \342\200\224 %s (%s)\n\n' "$_norm" "$_title" "$_today"
+  if [ "$_want_tag" -eq 1 ]; then
+    printf '[bump-version] (dry-run) git tag: v%s (would create)\n' "$_norm"
+  fi
+}
+
+backup_files() {
+  # Use mktemp for non-predictable backup paths; umask tightened to owner-only.
+  _old_umask=$(umask)
+  umask 077
+  _BACKUP_BIN_JAILRUN=$(mktemp "${TMPDIR:-/tmp}/bump-version.bin-jailrun.XXXXXX") || {
+    umask "$_old_umask"
+    die "failed to allocate backup path for bin/jailrun"
+  }
+  _BACKUP_HISTORY=$(mktemp "${TMPDIR:-/tmp}/bump-version.history.XXXXXX") || {
+    rm -f "$_BACKUP_BIN_JAILRUN"
+    umask "$_old_umask"
+    die "failed to allocate backup path for HISTORY.md"
+  }
+  umask "$_old_umask"
+  cp -p bin/jailrun "$_BACKUP_BIN_JAILRUN" || die "failed to backup bin/jailrun"
+  cp -p HISTORY.md "$_BACKUP_HISTORY" || {
+    rm -f "$_BACKUP_BIN_JAILRUN"
+    die "failed to backup HISTORY.md"
+  }
+}
+
+restore_from_backup() {
+  # best-effort restore; keep backups on failure
+  if [ -n "$_BACKUP_BIN_JAILRUN" ] && [ -f "$_BACKUP_BIN_JAILRUN" ]; then
+    cp "$_BACKUP_BIN_JAILRUN" bin/jailrun 2>/dev/null || \
+      printf '[bump-version] WARN: failed to restore bin/jailrun; backup kept at %s\n' "$_BACKUP_BIN_JAILRUN" >&2
+  fi
+  if [ -n "$_BACKUP_HISTORY" ] && [ -f "$_BACKUP_HISTORY" ]; then
+    cp "$_BACKUP_HISTORY" HISTORY.md 2>/dev/null || \
+      printf '[bump-version] WARN: failed to restore HISTORY.md; backup kept at %s\n' "$_BACKUP_HISTORY" >&2
+  fi
+}
+
+cleanup_backup() {
+  [ -n "$_BACKUP_BIN_JAILRUN" ] && rm -f "$_BACKUP_BIN_JAILRUN"
+  [ -n "$_BACKUP_HISTORY" ] && rm -f "$_BACKUP_HISTORY"
+  return 0
+}
+
+write_version_line() {
+  _norm="$1"
+  # Seed the temp file with a copy of the target so that executable bits / other
+  # permissions are preserved by the subsequent in-place rewrite + atomic rename.
+  _tmp=$(mktemp "bin/.jailrun.tmp.XXXXXX") || return 1
+  cp -p bin/jailrun "$_tmp" || { rm -f "$_tmp"; return 1; }
+  awk -v ver="$_norm" '
+    /^VERSION="[^"]*"$/ && !done {
+      printf "VERSION=\"%s\"\n", ver
+      done = 1
+      next
+    }
+    { print }
+  ' bin/jailrun > "$_tmp" || { rm -f "$_tmp"; return 1; }
+  mv "$_tmp" bin/jailrun || { rm -f "$_tmp"; return 1; }
+  return 0
+}
+
+prepend_history_entry() {
+  _norm="$1"
+  _title="$2"
+  _today="$3"
+  _tmp=$(mktemp ".HISTORY.md.tmp.XXXXXX") || return 1
+
+  # keep line 1 ("# Change History") and insert the new entry heading + blank line right after
+  {
+    sed -n '1p' HISTORY.md
+    printf '\n## v%s \342\200\224 %s (%s)\n' "$_norm" "$_title" "$_today"
+    sed -n '2,$p' HISTORY.md
+  } > "$_tmp" || { rm -f "$_tmp"; return 1; }
+  mv "$_tmp" HISTORY.md || { rm -f "$_tmp"; return 1; }
+  return 0
+}
+
+create_git_tag() {
+  _norm="$1"
+  git tag "v${_norm}"
+}
+
+main() {
+  parse_args "$@"
+
+  validate_semver "$_ARG_VERSION"
+  _version_norm=$(normalize_version "$_ARG_VERSION")
+
+  _title=$(resolve_title)
+  validate_title "$_title"
+
+  _current=$(read_current_version)
+  assert_not_duplicate_version "$_current" "$_version_norm"
+
+  assert_history_exists
+  assert_history_well_formed
+  assert_not_duplicate_in_history "$_version_norm"
+
+  # git-dependent checks only run for real executions; --dry-run performs no git operations.
+  if [ "$_ARG_TAG" -eq 1 ] && [ "$_ARG_DRY_RUN" -eq 0 ]; then
+    assert_no_existing_tag "$_version_norm"
+    assert_clean_worktree
+  fi
+
+  _today=$(date -u +%Y-%m-%d)
+
+  if [ "$_ARG_DRY_RUN" -eq 1 ]; then
+    render_dry_run_diff "$_current" "$_version_norm" "$_title" "$_today" "$_ARG_TAG"
+    exit 0
+  fi
+
+  backup_files
+
+  if ! write_version_line "$_version_norm"; then
+    restore_from_backup
+    die "failed to update bin/jailrun VERSION line (backup: $_BACKUP_BIN_JAILRUN, $_BACKUP_HISTORY)"
+  fi
+
+  if ! prepend_history_entry "$_version_norm" "$_title" "$_today"; then
+    restore_from_backup
+    die "failed to prepend HISTORY.md entry (backup: $_BACKUP_BIN_JAILRUN, $_BACKUP_HISTORY)"
+  fi
+
+  if [ "$_ARG_TAG" -eq 1 ]; then
+    if ! create_git_tag "$_version_norm"; then
+      restore_from_backup
+      die "failed to create git tag v${_version_norm} (backup: $_BACKUP_BIN_JAILRUN, $_BACKUP_HISTORY)"
+    fi
+  fi
+
+  cleanup_backup
+
+  printf '[bump-version] VERSION: %s -> %s\n' "$_current" "$_version_norm"
+  printf '[bump-version] HISTORY.md: prepended "## v%s \342\200\224 %s (%s)"\n' "$_version_norm" "$_title" "$_today"
+  if [ "$_ARG_TAG" -eq 1 ]; then
+    printf '[bump-version] git tag: v%s created\n' "$_version_norm"
+  fi
+}
+
+main "$@"
