@@ -1,5 +1,36 @@
 # Change History
 
+## v0.3.0 — 現状整理・品質向上・バージョン運用統一 (2026-04-20)
+
+VERSION SoT の確立と bump-version スクリプト導入、HISTORY.md の過去サイクル分補完、v0.3.0 リリース手順ドキュメント新設により、リリース可視性とバージョン運用の統一を達成した。併せて Issue #23（Linux lockdir/proper-lockfile 競合）の論理検証を実施した。
+
+### Changes
+
+#### Investigation
+
+- **Issue #23 の論理検証**: Linux 環境の lockdir 事前作成と `proper-lockfile` の競合について、`mkdir -p` 除去後の挙動を再評価。回帰なしを確認してクローズ判断に至った（Unit 001）
+
+#### Version Management
+
+- **`bin/bump-version` 新設**: POSIX sh 実装で `<version> [--message <text>] [--tag] [--dry-run]` CLI を提供。`bin/jailrun` 内 VERSION 行と `HISTORY.md` 先頭見出しを原子的に更新し、`--tag` 指定時は `git tag vX.Y.Z` を作成。失敗時はバックアップからの自動復元で状態変化ゼロを保証（Unit 002）
+- **VERSION SoT の確立**: `bin/jailrun` 内の `VERSION="x.y.z"` 行を `jailrun --version` の単一 source of truth として確立し、`tests/jailrun.bats` もこの値を期待値として参照するよう整備（Unit 002）
+- **`tests/bump_version.bats` 追加**: 正常系・異常系（バージョン形式違反、重複バージョン、HISTORY.md 形式不正、`--tag` での既存 tag／dirty worktree、`--dry-run` 副作用ゼロなど）および `--message` / stdin 入力制約の網羅テストを追加（Unit 002）
+
+#### Release Documentation
+
+- **HISTORY.md 過去サイクル分の補完**: v0.2.0（サンドボックスプロファイル修正の正式化と deny ログ機能追加）と v0.2.1（Keychain アクセス制限強化とクラウドクレデンシャル deny-read 拡充）のエントリを補完し、新しい順（v0.2.1 → v0.2.0 → v0.1.0）に並び替え。一次情報（`construction_unit*.md` / `operations.md` / merge 差分）にトレース可能な fact のみで構成（Unit 003）
+- **v0.3.0 エントリ先頭挿入**: `bin/bump-version` 本実行（初の実運用）により `bin/jailrun` VERSION を `0.3.0` に更新し、HISTORY.md 先頭に v0.3.0 見出しを自動挿入（Unit 004）
+- **`docs/release.md` 新設**: 新規コントリビューターが 1 人でリリース作業を完結できる 5 章構成（semver 規則、bump-version 利用手順、git tag 運用ポリシー、HISTORY.md エントリガイドライン、リリース後確認項目）のリリース手順書を新設（Unit 004）
+
+#### Tests
+
+- **`tests/jailrun.bats` version 期待値更新**: `"jailrun 0.1.0"` → `"jailrun 0.3.0"` に更新し、VERSION SoT の実運用と整合（Unit 004）
+
+### Compatibility
+
+- `jailrun --version` の参照元を `bin/jailrun` 内の `VERSION` 定数に統一した（Unit 002 `construction_unit02.md` / `bin/jailrun` 差分）
+- `docs/release.md` の新設は既存 `docs/*.md` の構造・内容を変更しない独立ファイル追加のみ（既存 `docs/architecture.md` / `docs/contributing.md` / `docs/github-pat-setup.md` / `docs/README.md` は不変）
+
 ## v0.2.1 — Keychainアクセス制限強化とクラウドクレデンシャルdeny-read拡充 (2026-04-14)
 
 macOS Seatbeltプロファイルで従来全面許可されていたKeychain書き込みを設定駆動で絞り込める仕組み（`keychain_profile`）を追加し、主要クラウド／開発ツールのクレデンシャルパス19件をdeny-readデフォルトへ取り込むことでjailrunの保護範囲を大幅に拡大した。

@@ -9,7 +9,7 @@
 @test "jailrun --version shows version" {
   run bin/jailrun --version
   [ "$status" -eq 0 ]
-  [[ "$output" == "jailrun 0.1.0" ]]
+  [[ "$output" == "jailrun 0.3.0" ]]
 }
 
 @test "jailrun with unknown command exits 1" {
