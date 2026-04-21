@@ -105,6 +105,23 @@ assert_no_state_change() {
   [[ "$output" == "v0.2.0" ]]
 }
 
+@test "--tag creates a commit and tag references the bumped contents" {
+  before_head=$(git rev-parse HEAD)
+  before_count=$(git rev-list --count HEAD)
+  run "$BUMP_VERSION" 0.2.0 --message "Release 0.2.0" --tag
+  [ "$status" -eq 0 ]
+  after_head=$(git rev-parse HEAD)
+  after_count=$(git rev-list --count HEAD)
+  # A new commit must have been created so the tag references release contents (not pre-bump HEAD).
+  [ "$before_head" != "$after_head" ]
+  [ "$after_count" -eq $((before_count + 1)) ]
+  # The tag must reference the new HEAD, and the new HEAD must contain the bumped VERSION.
+  tag_ref=$(git rev-list -n1 v0.2.0)
+  [ "$tag_ref" = "$after_head" ]
+  git show "HEAD:bin/jailrun" | grep -qE '^VERSION="0\.2\.0"$'
+  git show "HEAD:HISTORY.md" | grep -q "## v0.2.0"
+}
+
 @test "without --tag no git tag is created" {
   run "$BUMP_VERSION" 0.2.0 --message "Release 0.2.0"
   [ "$status" -eq 0 ]

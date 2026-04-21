@@ -266,7 +266,18 @@ prepend_history_entry() {
 
 create_git_tag() {
   _norm="$1"
-  git tag "v${_norm}"
+  # Stage and commit the bumped files first so the tag points at release contents (not pre-bump HEAD).
+  git add bin/jailrun HISTORY.md || return 1
+  git commit -m "chore: bump version to v${_norm}" >/dev/null || {
+    git reset HEAD -- bin/jailrun HISTORY.md 2>/dev/null || true
+    return 1
+  }
+  if ! git tag "v${_norm}"; then
+    # Roll back the commit we just created so restore_from_backup can safely restore the worktree.
+    git reset --mixed HEAD~1 2>/dev/null || true
+    return 1
+  fi
+  return 0
 }
 
 main() {
