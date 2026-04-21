@@ -9,7 +9,9 @@
 @test "jailrun --version shows version" {
   run bin/jailrun --version
   [ "$status" -eq 0 ]
-  [[ "$output" == "jailrun 0.1.0" ]]
+  expected_version="$(grep -E '^VERSION="[^"]*"$' bin/jailrun | sed -E 's/^VERSION="([^"]*)"$/\1/')"
+  [ -n "$expected_version" ]
+  [[ "$output" == "jailrun ${expected_version}" ]]
 }
 
 @test "jailrun with unknown command exits 1" {
