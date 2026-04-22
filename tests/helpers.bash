@@ -263,3 +263,311 @@ assert_shim_not_called() {
   done < "$SHIM_CALLS_LOG"
   return 0
 }
+
+# ----------------------------------------------------------------
+# Unit 002 (ruleset.bats) helpers — PATH shim + sysbin whitelist
+#
+# Spec: .aidlc/cycles/v0.3.1/design-artifacts/logical-designs/
+#       unit_002_ruleset_bats_tests_logical_design.md
+#
+# Strongly isolates PATH to $BATS_TEST_TMPDIR/shim-bin:$BATS_TEST_TMPDIR/sysbin
+# (no /usr/bin, no /bin). sysbin holds symlinks to a whitelist of system
+# binaries needed by bin/jailrun + lib/ruleset.sh + bats test code.
+# shim-calls.log is a 6-column TSV:
+#   command<TAB>category<TAB>method<TAB>argv<TAB>target<TAB>last
+# where `last` is exit_code for normal rows, payload_path for api_payload
+# auxiliary rows (switched by category column).
+# ----------------------------------------------------------------
+
+setup_ruleset_shims() {
+  mkdir -p "$BATS_TEST_TMPDIR/shim-bin"
+  mkdir -p "$BATS_TEST_TMPDIR/sysbin"
+  mkdir -p "$BATS_TEST_TMPDIR/home"
+
+  _ruleset_link_sysbin_whitelist || return 1
+
+  _write_gh_shim
+  _write_git_shim
+
+  chmod +x "$BATS_TEST_TMPDIR/shim-bin"/*
+
+  export PATH="$BATS_TEST_TMPDIR/shim-bin:$BATS_TEST_TMPDIR/sysbin"
+  export TMPDIR="$BATS_TEST_TMPDIR"
+  export USER="jailrun-test"
+  export HOME="$BATS_TEST_TMPDIR/home"
+  export SHIM_CALLS_LOG="$BATS_TEST_TMPDIR/shim-calls.log"
+  export GH_PAYLOAD_SEQ="$BATS_TEST_TMPDIR/gh-payload-seq"
+
+  : > "$SHIM_CALLS_LOG"
+  echo 0 > "$GH_PAYLOAD_SEQ"
+}
+
+teardown_ruleset_shims() {
+  :
+}
+
+# Symlink a whitelist of system binaries from /usr/bin (preferred) or /bin
+# into $BATS_TEST_TMPDIR/sysbin. gh must NEVER be in this whitelist.
+_ruleset_link_sysbin_whitelist() {
+  local _cmd
+  for _cmd in readlink dirname cat grep rm chmod; do
+    if [ -x "/usr/bin/$_cmd" ]; then
+      ln -sf "/usr/bin/$_cmd" "$BATS_TEST_TMPDIR/sysbin/$_cmd"
+    elif [ -x "/bin/$_cmd" ]; then
+      ln -sf "/bin/$_cmd" "$BATS_TEST_TMPDIR/sysbin/$_cmd"
+    else
+      echo "[setup_ruleset_shims] ERROR: required system binary $_cmd not found in /usr/bin or /bin" >&2
+      return 1
+    fi
+  done
+}
+
+_write_gh_shim() {
+  cat > "$BATS_TEST_TMPDIR/shim-bin/gh" <<'SHIM'
+#!/bin/sh
+_argv="$*"
+_sub="${1:-}"
+
+# gh auth status
+if [ "$_sub" = "auth" ]; then
+  shift
+  _argv_rest="$*"
+  _state="${MOCK_GH_AUTH_STATE:-ok}"
+  case "$_state" in
+    ok)
+      printf 'gh\tapi\t-\t%s\t-\t0\n' "$_argv_rest" >> "$SHIM_CALLS_LOG"
+      exit 0
+      ;;
+    fail)
+      echo "You are not logged into any GitHub hosts." >&2
+      printf 'gh\tapi\t-\t%s\t-\t1\n' "$_argv_rest" >> "$SHIM_CALLS_LOG"
+      exit 1
+      ;;
+  esac
+fi
+
+# gh api ...
+if [ "$_sub" = "api" ]; then
+  shift
+  _argv_rest="$*"
+
+  # Detect --method POST
+  _method="GET"
+  _has_post=0
+  _has_input=0
+  for _arg in "$@"; do
+    if [ "$_method_next" = "1" ]; then
+      _method="$_arg"
+      _method_next=""
+      if [ "$_arg" = "POST" ]; then
+        _has_post=1
+      fi
+      continue
+    fi
+    case "$_arg" in
+      --method) _method_next=1 ;;
+      -) _has_input=1 ;;
+    esac
+  done
+
+  if [ "$_has_post" = "1" ]; then
+    # POST path: read stdin into payload file, extract target
+    _state="${MOCK_GH_POST_STATE:-ok}"
+    _seq=$(cat "$GH_PAYLOAD_SEQ")
+    _seq=$((_seq + 1))
+    echo "$_seq" > "$GH_PAYLOAD_SEQ"
+    _payload_file="$BATS_TEST_TMPDIR/gh-payload-$_seq.json"
+    if [ "$_has_input" = "1" ]; then
+      cat > "$_payload_file"
+    else
+      : > "$_payload_file"
+    fi
+    # Extract target from payload
+    _target="unknown"
+    if grep -F -- '"target": "branch"' "$_payload_file" >/dev/null 2>&1; then
+      _target="branch"
+    elif grep -F -- '"target": "tag"' "$_payload_file" >/dev/null 2>&1; then
+      _target="tag"
+    fi
+    case "$_state" in
+      ok)
+        printf 'gh\tapi\tPOST\t%s\t%s\t0\n' "$_argv_rest" "$_target" >> "$SHIM_CALLS_LOG"
+        printf 'gh\tapi_payload\tPOST\t-\t%s\t%s\n' "$_target" "$_payload_file" >> "$SHIM_CALLS_LOG"
+        exit 0
+        ;;
+      fail)
+        echo "gh: HTTP 422 Unprocessable Entity" >&2
+        printf 'gh\tapi\tPOST\t%s\t%s\t1\n' "$_argv_rest" "$_target" >> "$SHIM_CALLS_LOG"
+        printf 'gh\tapi_payload\tPOST\t-\t%s\t%s\n' "$_target" "$_payload_file" >> "$SHIM_CALLS_LOG"
+        exit 1
+        ;;
+    esac
+  fi
+
+  # GET path (list)
+  _state="${MOCK_GH_LIST_STATE:-ok}"
+  case "$_state" in
+    ok)
+      if [ -n "${MOCK_GH_RULESETS_NAMES:-}" ]; then
+        printf '%s\n' "$MOCK_GH_RULESETS_NAMES"
+      fi
+      printf 'gh\tapi\tGET\t%s\t-\t0\n' "$_argv_rest" >> "$SHIM_CALLS_LOG"
+      exit 0
+      ;;
+    fail)
+      echo "gh: HTTP 500 Internal Server Error" >&2
+      printf 'gh\tapi\tGET\t%s\t-\t1\n' "$_argv_rest" >> "$SHIM_CALLS_LOG"
+      exit 1
+      ;;
+  esac
+fi
+
+echo "[shim] unknown gh invocation: $_argv" >&2
+printf 'gh\tapi\t-\t%s\t-\t1\n' "$_argv" >> "$SHIM_CALLS_LOG"
+exit 1
+SHIM
+}
+
+_write_git_shim() {
+  cat > "$BATS_TEST_TMPDIR/shim-bin/git" <<'SHIM'
+#!/bin/sh
+_argv="$*"
+_sub1="${1:-}"
+_sub2="${2:-}"
+
+if [ "$_sub1" = "remote" ] && [ "$_sub2" = "get-url" ]; then
+  _state="${MOCK_GIT_REMOTE_STATE:-ok}"
+  case "$_state" in
+    ok)
+      printf '%s\n' "${MOCK_GIT_REMOTE_URL:-}"
+      printf 'git\tremote\t-\t%s\t-\t0\n' "$_argv" >> "$SHIM_CALLS_LOG"
+      exit 0
+      ;;
+    empty)
+      printf 'git\tremote\t-\t%s\t-\t0\n' "$_argv" >> "$SHIM_CALLS_LOG"
+      exit 0
+      ;;
+    fail)
+      printf 'git\tremote\t-\t%s\t-\t1\n' "$_argv" >> "$SHIM_CALLS_LOG"
+      exit 1
+      ;;
+  esac
+fi
+
+echo "[shim] unknown git subcommand: $_argv" >&2
+printf 'git\tremote\t-\t%s\t-\t1\n' "$_argv" >> "$SHIM_CALLS_LOG"
+exit 1
+SHIM
+}
+
+# assert_gh_api_called <method> <path_substring> [<target>]
+#   Match rows with command=gh, category=api, exact method, argv contains
+#   path_substring (literal), and optionally target matches exactly.
+assert_gh_api_called() {
+  local _method="$1"
+  local _sub="$2"
+  local _target="${3:-}"
+  while IFS=$'\t' read -r _c _cat _m _argv _t _last; do
+    [ "$_c" = "gh" ] || continue
+    [ "$_cat" = "api" ] || continue
+    [ "$_m" = "$_method" ] || continue
+    if [ -n "$_sub" ]; then
+      printf '%s' "$_argv" | grep -F -- "$_sub" >/dev/null 2>&1 || continue
+    fi
+    if [ -n "$_target" ]; then
+      [ "$_t" = "$_target" ] || continue
+    fi
+    return 0
+  done < "$SHIM_CALLS_LOG"
+  echo "assert_gh_api_called FAILED: method='$_method' sub='$_sub' target='$_target'" >&2
+  echo "--- shim-calls.log ---" >&2
+  cat "$SHIM_CALLS_LOG" >&2
+  return 1
+}
+
+# assert_gh_api_not_called <method> <path_substring> [<target>]
+assert_gh_api_not_called() {
+  local _method="$1"
+  local _sub="$2"
+  local _target="${3:-}"
+  while IFS=$'\t' read -r _c _cat _m _argv _t _last; do
+    [ "$_c" = "gh" ] || continue
+    [ "$_cat" = "api" ] || continue
+    [ "$_m" = "$_method" ] || continue
+    if [ -n "$_sub" ]; then
+      printf '%s' "$_argv" | grep -F -- "$_sub" >/dev/null 2>&1 || continue
+    fi
+    if [ -n "$_target" ]; then
+      [ "$_t" = "$_target" ] || continue
+    fi
+    echo "assert_gh_api_not_called FAILED: method='$_method' sub='$_sub' target='$_target' matched" >&2
+    return 1
+  done < "$SHIM_CALLS_LOG"
+  return 0
+}
+
+# assert_gh_auth_called — gh auth status logged as category=api with argv starting with 'status'
+assert_gh_auth_called() {
+  while IFS=$'\t' read -r _c _cat _m _argv _t _last; do
+    [ "$_c" = "gh" ] || continue
+    [ "$_cat" = "api" ] || continue
+    case "$_argv" in
+      status*) return 0 ;;
+    esac
+  done < "$SHIM_CALLS_LOG"
+  echo "assert_gh_auth_called FAILED: no 'gh auth status' row found" >&2
+  echo "--- shim-calls.log ---" >&2
+  cat "$SHIM_CALLS_LOG" >&2
+  return 1
+}
+
+# assert_gh_auth_not_called
+assert_gh_auth_not_called() {
+  while IFS=$'\t' read -r _c _cat _m _argv _t _last; do
+    [ "$_c" = "gh" ] || continue
+    [ "$_cat" = "api" ] || continue
+    case "$_argv" in
+      status*)
+        echo "assert_gh_auth_not_called FAILED: 'gh auth status' was called" >&2
+        return 1
+        ;;
+    esac
+  done < "$SHIM_CALLS_LOG"
+  return 0
+}
+
+# assert_gh_post_called <target>
+assert_gh_post_called() {
+  assert_gh_api_called POST "rulesets" "$1"
+}
+
+# assert_gh_post_not_called <target>
+assert_gh_post_not_called() {
+  assert_gh_api_not_called POST "rulesets" "$1"
+}
+
+# assert_gh_payload_contains <target> <substring>
+#   Find auxiliary rows with category=api_payload + matching target, then
+#   grep -F the substring in the payload file recorded in `last` column.
+assert_gh_payload_contains() {
+  local _target="$1"
+  local _sub="$2"
+  local _matched=0
+  while IFS=$'\t' read -r _c _cat _m _argv _t _last; do
+    [ "$_c" = "gh" ] || continue
+    [ "$_cat" = "api_payload" ] || continue
+    [ "$_t" = "$_target" ] || continue
+    if [ -f "$_last" ] && grep -F -- "$_sub" "$_last" >/dev/null 2>&1; then
+      return 0
+    fi
+    _matched=1
+  done < "$SHIM_CALLS_LOG"
+  if [ "$_matched" = "1" ]; then
+    echo "assert_gh_payload_contains FAILED: target='$_target' sub='$_sub' not found in any payload" >&2
+  else
+    echo "assert_gh_payload_contains FAILED: no api_payload row for target='$_target'" >&2
+  fi
+  echo "--- shim-calls.log ---" >&2
+  cat "$SHIM_CALLS_LOG" >&2
+  return 1
+}
