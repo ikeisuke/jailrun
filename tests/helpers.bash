@@ -571,3 +571,364 @@ assert_gh_payload_contains() {
   cat "$SHIM_CALLS_LOG" >&2
   return 1
 }
+
+# ----------------------------------------------------------------
+# Unit 003 (aws.bats) helpers — aws PATH shim + sysbin whitelist
+#
+# Spec: .aidlc/cycles/v0.3.1/design-artifacts/logical-designs/
+#       unit_003_aws_bats_tests_logical_design.md
+#
+# PATH is strongly isolated to $BATS_TEST_TMPDIR/shim-bin:$BATS_TEST_TMPDIR/sysbin
+# (no /usr/bin, no /bin). sysbin holds mandatory symlinks (12 commands: readlink
+# dirname cat grep cut rm chmod mkdir touch awk tr sed; the last two are used
+# for closed profile-name normalization in the aws shim) plus an optional jq
+# symlink (present only if OS jq is available). The aws binary is NEVER added
+# to sysbin to guarantee that real aws CLI is unreachable.
+#
+# shim-calls.log is a 6-column TSV:
+#   command<TAB>category<TAB>method<TAB>argv<TAB>profile<TAB>exit_code
+#
+# Test flow: set pre-source env vars -> setup_aws_shims -> source lib/aws.sh
+# (which touches $_tmpdir/aws-config and $_tmpdir/aws-credentials) -> run
+# _setup_aws_credentials or call _write_aws_profile directly.
+# ----------------------------------------------------------------
+
+setup_aws_shims() {
+  mkdir -p "$BATS_TEST_TMPDIR/shim-bin"
+  mkdir -p "$BATS_TEST_TMPDIR/sysbin"
+  mkdir -p "$BATS_TEST_TMPDIR/home"
+  mkdir -p "$BATS_TEST_TMPDIR/aws-work"
+
+  _aws_link_sysbin_whitelist || return 1
+  _aws_link_jq_optional
+
+  _write_aws_shim
+
+  chmod +x "$BATS_TEST_TMPDIR/shim-bin"/*
+
+  export PATH="$BATS_TEST_TMPDIR/shim-bin:$BATS_TEST_TMPDIR/sysbin"
+  export TMPDIR="$BATS_TEST_TMPDIR"
+  export USER="jailrun-test"
+  export HOME="$BATS_TEST_TMPDIR/home"
+  export SHIM_CALLS_LOG="$BATS_TEST_TMPDIR/shim-calls.log"
+  export _tmpdir="$BATS_TEST_TMPDIR/aws-work"
+
+  : > "$SHIM_CALLS_LOG"
+}
+
+setup_aws_shims_without_jq() {
+  setup_aws_shims || return 1
+  rm -f "$BATS_TEST_TMPDIR/sysbin/jq"
+}
+
+teardown_aws_shims() {
+  :
+}
+
+# Symlink required system binaries from /usr/bin (preferred) or /bin.
+# aws must NEVER be in this whitelist. jq is handled separately (optional).
+_aws_link_sysbin_whitelist() {
+  local _cmd
+  for _cmd in readlink dirname cat grep cut rm chmod mkdir touch awk tr sed; do
+    if [ -x "/usr/bin/$_cmd" ]; then
+      ln -sf "/usr/bin/$_cmd" "$BATS_TEST_TMPDIR/sysbin/$_cmd"
+    elif [ -x "/bin/$_cmd" ]; then
+      ln -sf "/bin/$_cmd" "$BATS_TEST_TMPDIR/sysbin/$_cmd"
+    else
+      echo "[setup_aws_shims] ERROR: required system binary $_cmd not found in /usr/bin or /bin" >&2
+      return 1
+    fi
+  done
+}
+
+# Optional jq symlink: present iff OS jq is available. AW9 removes it to force
+# the grep/cut fallback path in lib/aws.sh.
+_aws_link_jq_optional() {
+  local _jq_path
+  _jq_path=$(command -v jq 2>/dev/null || true)
+  if [ -n "$_jq_path" ] && [ -x "$_jq_path" ]; then
+    ln -sf "$_jq_path" "$BATS_TEST_TMPDIR/sysbin/jq"
+  fi
+}
+
+_write_aws_shim() {
+  cat > "$BATS_TEST_TMPDIR/shim-bin/aws" <<'SHIM'
+#!/bin/sh
+# aws shim: handles `configure export-credentials` and `configure get region`.
+# Controlled by MOCK_AWS_EXPORT_STATE_<KEY>, MOCK_AWS_EXPORT_JSON_<KEY>,
+# MOCK_AWS_REGION_<KEY> where <KEY> is a normalized profile name.
+
+_sub1="${1:-}"
+_sub2="${2:-}"
+
+# Extract --profile <value> from the full argv. If absent, KEY=DEFAULT.
+_profile="-"
+_prev=""
+for _arg in "$@"; do
+  if [ "$_prev" = "--profile" ]; then
+    _profile="$_arg"
+    break
+  fi
+  _prev="$_arg"
+done
+
+# Normalize profile name to a shell-variable-safe suffix [A-Z0-9_]:
+#   [a-z] -> [A-Z], any non-[A-Z0-9_] -> _ (closed normalization).
+if [ "$_profile" = "-" ]; then
+  _key="DEFAULT"
+else
+  _key=$(printf '%s' "$_profile" | tr 'a-z' 'A-Z' | sed 's/[^A-Z0-9_]/_/g')
+fi
+
+# Build argv (space-joined) excluding $0; keep it tab-free for TSV integrity.
+_argv=""
+for _arg in "$@"; do
+  if [ -z "$_argv" ]; then
+    _argv="$_arg"
+  else
+    _argv="$_argv $_arg"
+  fi
+done
+
+_log_row() {
+  # command<TAB>category<TAB>method<TAB>argv<TAB>profile<TAB>exit_code
+  printf 'aws\tconfigure\t%s\t%s\t%s\t%s\n' "$1" "$_argv" "$_profile" "$2" >> "$SHIM_CALLS_LOG"
+}
+
+case "$_sub1 $_sub2" in
+  "configure export-credentials")
+    _state_var="MOCK_AWS_EXPORT_STATE_${_key}"
+    _json_var="MOCK_AWS_EXPORT_JSON_${_key}"
+    eval "_state=\${$_state_var:-ok}"
+    eval "_json=\${$_json_var:-}"
+    case "$_state" in
+      ok)
+        if [ -n "$_json" ]; then
+          printf '%s\n' "$_json"
+        fi
+        _log_row "export-credentials" 0
+        exit 0
+        ;;
+      fail)
+        echo "Unable to locate credentials. You can configure credentials by running \"aws configure\"." >&2
+        _log_row "export-credentials" 255
+        exit 255
+        ;;
+    esac
+    ;;
+  "configure get")
+    if [ "$3" = "region" ]; then
+      _region_var="MOCK_AWS_REGION_${_key}"
+      eval "_region=\${$_region_var:-}"
+      if [ -n "$_region" ]; then
+        printf '%s\n' "$_region"
+        _log_row "get-region" 0
+        exit 0
+      fi
+      _log_row "get-region" 1
+      exit 1
+    fi
+    ;;
+esac
+
+echo "[shim] unknown aws subcommand: $_argv" >&2
+_log_row "unknown" 1
+exit 1
+SHIM
+}
+
+# assert_aws_configure_called <method> <profile>
+#   method: export-credentials | get-region | unknown
+#   profile: profile name (e.g. default / work) or - for absent
+assert_aws_configure_called() {
+  local _method="$1"
+  local _profile="$2"
+  while IFS=$'\t' read -r _c _cat _m _argv _p _ec; do
+    [ "$_c" = "aws" ] || continue
+    [ "$_cat" = "configure" ] || continue
+    [ "$_m" = "$_method" ] || continue
+    [ "$_p" = "$_profile" ] || continue
+    return 0
+  done < "$SHIM_CALLS_LOG"
+  echo "assert_aws_configure_called FAILED: method='$_method' profile='$_profile'" >&2
+  echo "--- shim-calls.log ---" >&2
+  cat "$SHIM_CALLS_LOG" >&2
+  return 1
+}
+
+assert_aws_configure_not_called() {
+  local _method="$1"
+  local _profile="$2"
+  while IFS=$'\t' read -r _c _cat _m _argv _p _ec; do
+    [ "$_c" = "aws" ] || continue
+    [ "$_cat" = "configure" ] || continue
+    [ "$_m" = "$_method" ] || continue
+    [ "$_p" = "$_profile" ] || continue
+    echo "assert_aws_configure_not_called FAILED: method='$_method' profile='$_profile'" >&2
+    return 1
+  done < "$SHIM_CALLS_LOG"
+  return 0
+}
+
+# --- INI assertion helpers ---------------------------------------------------
+# Section matching uses awk with a -v variable bound to the section name so that
+# regex metacharacters (., -, /) in profile names never cause false matches.
+# Same design for both $_aws_config and $_aws_creds.
+
+_aws_ini_file_for_kind() {
+  # $1: config|creds
+  case "$1" in
+    config) printf '%s' "$_aws_config" ;;
+    creds)  printf '%s' "$_aws_creds" ;;
+    *)      return 1 ;;
+  esac
+}
+
+# _aws_assert_section_count <kind> <section> <expected_count>
+_aws_assert_section_count() {
+  local _kind="$1" _section="$2" _expected="$3"
+  local _file
+  _file=$(_aws_ini_file_for_kind "$_kind") || return 1
+  local _actual
+  _actual=$(awk -v sec="$_section" 'BEGIN{n=0} { if ($0 == "[" sec "]") n++ } END{print n}' "$_file")
+  if [ "$_actual" = "$_expected" ]; then
+    return 0
+  fi
+  echo "assert_aws_${_kind}_section_count FAILED: section='$_section' expected=$_expected actual=$_actual" >&2
+  echo "--- $_kind file ($_file) ---" >&2
+  cat "$_file" >&2
+  return 1
+}
+
+# _aws_assert_section_exists <kind> <section>
+_aws_assert_section_exists() {
+  local _kind="$1" _section="$2"
+  local _file
+  _file=$(_aws_ini_file_for_kind "$_kind") || return 1
+  if awk -v sec="$_section" '$0 == "[" sec "]" { found=1 } END { exit (found ? 0 : 1) }' "$_file"; then
+    return 0
+  fi
+  echo "assert_aws_${_kind}_section FAILED: section='$_section' not found" >&2
+  echo "--- $_kind file ($_file) ---" >&2
+  cat "$_file" >&2
+  return 1
+}
+
+# _aws_assert_section_not_exists <kind> <section>
+_aws_assert_section_not_exists() {
+  local _kind="$1" _section="$2"
+  local _file
+  _file=$(_aws_ini_file_for_kind "$_kind") || return 1
+  if awk -v sec="$_section" '$0 == "[" sec "]" { found=1 } END { exit (found ? 0 : 1) }' "$_file"; then
+    echo "assert_aws_${_kind}_section_not_exists FAILED: section='$_section' was found" >&2
+    echo "--- $_kind file ($_file) ---" >&2
+    cat "$_file" >&2
+    return 1
+  fi
+  return 0
+}
+
+# _aws_assert_section_order <kind> <section_1> [<section_2> ...]
+#   Requires the sections in the file appear in the given order. Duplicate names
+#   are treated as separate positions.
+_aws_assert_section_order() {
+  local _kind="$1"
+  shift
+  local _file
+  _file=$(_aws_ini_file_for_kind "$_kind") || return 1
+  local _actual
+  _actual=$(awk 'match($0, /^\[.*\]$/) { print substr($0, RSTART+1, RLENGTH-2) }' "$_file" | tr '\n' '|')
+  local _expected=""
+  local _s
+  for _s in "$@"; do
+    _expected="${_expected}${_s}|"
+  done
+  if [ "$_actual" = "$_expected" ]; then
+    return 0
+  fi
+  echo "assert_aws_${_kind}_section_order FAILED: expected='$_expected' actual='$_actual'" >&2
+  echo "--- $_kind file ($_file) ---" >&2
+  cat "$_file" >&2
+  return 1
+}
+
+# _aws_assert_line <kind> <section> <key> <value>
+#   Succeeds if ANY [section] block contains '<key> = <value>'.
+_aws_assert_line() {
+  local _kind="$1" _section="$2" _key="$3" _value="$4"
+  local _file
+  _file=$(_aws_ini_file_for_kind "$_kind") || return 1
+  local _needle="$_key = $_value"
+  if awk -v sec="$_section" -v needle="$_needle" '
+    BEGIN { in_sec = 0 }
+    $0 == "[" sec "]" { in_sec = 1; next }
+    /^\[.*\]$/ { in_sec = 0; next }
+    in_sec && $0 == needle { print "match"; exit }
+  ' "$_file" | grep -q match; then
+    return 0
+  fi
+  echo "assert_aws_${_kind}_line FAILED: section='$_section' key='$_key' value='$_value'" >&2
+  echo "--- $_kind file ($_file) ---" >&2
+  cat "$_file" >&2
+  return 1
+}
+
+# _aws_assert_line_in_nth <kind> <section> <nth> <key> <value>
+#   Succeeds if the <nth> (1-origin) [section] block contains '<key> = <value>'.
+_aws_assert_line_in_nth() {
+  local _kind="$1" _section="$2" _nth="$3" _key="$4" _value="$5"
+  local _file
+  _file=$(_aws_ini_file_for_kind "$_kind") || return 1
+  local _needle="$_key = $_value"
+  if awk -v sec="$_section" -v needle="$_needle" -v target="$_nth" '
+    BEGIN { seen = 0; in_sec = 0 }
+    $0 == "[" sec "]" { seen++; in_sec = (seen == target) ? 1 : 0; next }
+    /^\[.*\]$/ { in_sec = 0; next }
+    in_sec && $0 == needle { print "match"; exit }
+  ' "$_file" | grep -q match; then
+    return 0
+  fi
+  echo "assert_aws_${_kind}_line_in_nth FAILED: section='$_section' nth=$_nth key='$_key' value='$_value'" >&2
+  echo "--- $_kind file ($_file) ---" >&2
+  cat "$_file" >&2
+  return 1
+}
+
+# assert_aws_creds_line_absent <section> <key>
+#   Succeeds if NO [section] block contains a line starting with '<key>'.
+#   (Used to verify aws_session_token is omitted when empty.)
+assert_aws_creds_line_absent() {
+  local _section="$1" _key="$2"
+  local _file="$_aws_creds"
+  if awk -v sec="$_section" -v key="$_key" '
+    BEGIN { in_sec = 0 }
+    $0 == "[" sec "]" { in_sec = 1; next }
+    /^\[.*\]$/ { in_sec = 0; next }
+    in_sec {
+      idx = index($0, key " = ")
+      if (idx == 1) { print "match"; exit }
+    }
+  ' "$_file" | grep -q match; then
+    echo "assert_aws_creds_line_absent FAILED: section='$_section' key='$_key' was found" >&2
+    echo "--- creds file ($_file) ---" >&2
+    cat "$_file" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Public wrappers for config side
+assert_aws_config_section()            { _aws_assert_section_exists config "$1"; }
+assert_aws_config_section_not_exists() { _aws_assert_section_not_exists config "$1"; }
+assert_aws_config_section_count()      { _aws_assert_section_count config "$1" "$2"; }
+assert_aws_config_section_order()      { _aws_assert_section_order config "$@"; }
+assert_aws_config_line()               { _aws_assert_line config "$1" "$2" "$3"; }
+assert_aws_config_line_in_nth()        { _aws_assert_line_in_nth config "$1" "$2" "$3" "$4"; }
+
+# Public wrappers for creds side
+assert_aws_creds_section()            { _aws_assert_section_exists creds "$1"; }
+assert_aws_creds_section_not_exists() { _aws_assert_section_not_exists creds "$1"; }
+assert_aws_creds_section_count()      { _aws_assert_section_count creds "$1" "$2"; }
+assert_aws_creds_section_order()      { _aws_assert_section_order creds "$@"; }
+assert_aws_creds_line()               { _aws_assert_line creds "$1" "$2" "$3"; }
+assert_aws_creds_line_in_nth()        { _aws_assert_line_in_nth creds "$1" "$2" "$3" "$4"; }
