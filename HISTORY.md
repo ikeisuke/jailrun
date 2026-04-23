@@ -1,5 +1,38 @@
 # Change History
 
+## v0.3.1 — テスト基盤補強・5 領域の回帰保護を確立 (2026-04-23)
+
+v0.3.0 のコードベース調査で特定されたテストカバレッジ不足 5 領域を全て解消。bats（token/ruleset/aws）と Python unittest（config_cli/config_migrate）を組み合わせ、本体コード無変更で品質補強リリースを届けた。
+
+### Changes
+
+#### Tests
+
+- **`tests/token.bats` 新設**: `lib/token.sh` の `_cmd_add` / `_cmd_rotate` / `_cmd_delete` / `_cmd_list` に対する 19 ケースの bats テストを追加。macOS `security` / Linux `secret-tool` の PATH shim による Keychain 呼び出し検証、正常系 / Keychain 未設定 / 不正引数を網羅（Unit 001, Issue #41）
+- **`tests/ruleset.bats` 新設**: `lib/ruleset.sh` の GitHub API 呼び出し（`gh api` 経由のブランチ / タグ保護 apply 系）に対する 19 ケースの bats テストを追加。sysbin ホワイトリスト方式（6 コマンド）で PATH 隔離し、TSV 6 列（category / last 切替）で branch / tag POST を区別。idempotent skip、`gh api` 失敗系、delete 代替の idempotent skip、タグ保護 POST 失敗（RSF1 代表）を網羅（Unit 002, Issue #42）
+- **`tests/aws.bats` 新設**: `lib/aws.sh` の `_setup_aws_credentials` / `_write_aws_profile` に対する 9 ケース（AW1-AW9）の bats テストを追加。`aws configure export-credentials` と `jq` の PATH shim、INI 書き込みの section 重複・順序・行位置検証 helper（14 種）、AWS 失敗時 fail-open、jq 不在 fallback、プロファイル名正規化（`tr 'a-z' 'A-Z' | sed 's/[^A-Z0-9_]/_/g'` で `[A-Z0-9_]` へ閉じた正規化）を網羅（Unit 003, Issue #43）
+- **`tests/test_config_cli.py` 新設**: `lib/config_cli.py` の 6 関数（`cmd_load` / `cmd_show` / `cmd_set` / `cmd_edit` / `cmd_path` / `cmd_init`）に対する 21 ケース（CL1-CL3 / CS1-CS2 / CSET1-CSET9 / CE1-CE3 / CP1 / CI1-CI3）の Python unittest を追加。`config_cli.config_file` + `config.config_file` 両 patch、`os.execvp` スタブ化、`--append` 重複値の no-op 分岐を `set_key_in_toml` spy で直接観測、`--dir` longest-prefix + list append の識別 fixture を網羅（Unit 004, Issue #44）
+- **`tests/test_config_migrate.py` 新設**: `lib/config_migrate.py` の `migrate_shell_to_toml` / `cmd_migrate` 2 関数に対する 12 ケース（MST1-MST8 / CM1-CM4）の Python unittest を追加。`assertEqual` による TOML 全文厳密比較でラウンドトリップを検証、`GH_TOKEN_NAME` の precedence 分岐（`lib/config_migrate.py:54-56`）固定、`FileNotFoundError` / `SystemExit(1)` / `--force` 上書きを網羅（Unit 005, Issue #45）
+
+#### Test Helpers
+
+- **`tests/helpers.bash` 拡充**: token / ruleset / aws テスト向けの共通 helper を追加。PATH shim セットアップ（sysbin ホワイトリスト 12 コマンド: `readlink` / `dirname` / `cat` / `grep` / `cut` / `rm` / `chmod` / `mkdir` / `touch` / `awk` / `tr` / `sed`）、TSV 6 列 shim 呼び出しログ、INI section / key assertion（14 種、section_count / section_order / line_in_nth 系統）、AWS shim 専用のプロファイル名正規化を整備（Unit 001-003）
+
+#### Documentation
+
+- **`docs/contributing.md` Test Structure 更新**: v0.3.1 で追加された 5 テストファイル（`token.bats` / `ruleset.bats` / `aws.bats` / `test_config_cli.py` / `test_config_migrate.py`）を反映。あわせて既存の誤記（実在しない `lint.bats` の削除）と既存欠落ファイル（`bump_version.bats` / `path_resolution.bats` / `posix_compliance.bats` / `sandbox_deny_log.bats` / `sandbox_linux_apparmor.bats` / `shim.bats`）を追記して `tests/` 実在ファイル一覧と全面再同期（Unit 006）
+
+#### Version Management
+
+- **`bin/jailrun` VERSION 更新**: `0.3.0` → `0.3.1`（`bin/bump-version 0.3.1 --message "テスト基盤補強・5 領域の回帰保護を確立"` 経由で `bin/jailrun` VERSION 行と `HISTORY.md` 先頭見出しを同時更新、Unit 006）
+
+### Compatibility
+
+- 本サイクルの変更は **テスト追加 + リリースメタデータ / 文書更新のみ**で、本体コード（`lib/token.sh` / `lib/ruleset.sh` / `lib/aws.sh` / `lib/config_cli.py` / `lib/config_migrate.py` / `lib/config.py` / `bin/jailrun` のロジック部）に変更はない
+- 既存 bats 120 ケース + Python unittest 26 ケース（`tests/test_proxy.py`）は全て引き続きパス
+- 新規 bats 47 ケース（`token.bats` 19 / `ruleset.bats` 19 / `aws.bats` 9）+ Python unittest 33 ケース（`test_config_cli.py` 21 + `test_config_migrate.py` 12）を追加、合計 **bats 167 ケース + Python unittest 59 ケース**
+- `jailrun --version` 出力が `jailrun 0.3.1` に更新される
+
 ## v0.3.0 — 現状整理・品質向上・バージョン運用統一 (2026-04-20)
 
 VERSION SoT の確立と bump-version スクリプト導入、HISTORY.md の過去サイクル分補完、v0.3.0 リリース手順ドキュメント新設により、リリース可視性とバージョン運用の統一を達成した。併せて Issue #23（Linux lockdir/proper-lockfile 競合）の論理検証を実施した。
