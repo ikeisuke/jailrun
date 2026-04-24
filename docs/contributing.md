@@ -42,17 +42,27 @@ python3 -m unittest tests/test_proxy.py -v
 
 ```
 tests/
-├── helpers.bash               Common test helpers
-├── jailrun.bats               CLI entrypoint tests
-├── codex_args.bats            Codex argument rewriting tests
-├── config.bats                Config loading/migration tests
-├── config_cmd.bats            Config CLI subcommand tests
-├── sandbox_linux_systemd.bats systemd property generation tests
-├── credential_guard.bats      Double-sandbox prevention tests
-├── sandbox_profile.bats       Seatbelt profile generation tests
-├── passthrough_env.bats       Environment variable passthrough tests
-├── lint.bats                  Shell script linting checks
-└── test_proxy.py              Proxy unit tests (Python unittest)
+├── helpers.bash                 Common test helpers (PATH shims, INI assertions, etc.)
+├── aws.bats                     AWS credential setup tests (_setup_aws_credentials / _write_aws_profile)
+├── bump_version.bats            bin/bump-version script tests
+├── codex_args.bats              Codex argument rewriting tests
+├── config.bats                  Config loading/migration tests
+├── config_cmd.bats              Config CLI subcommand tests
+├── credential_guard.bats        Double-sandbox prevention tests
+├── jailrun.bats                 CLI entrypoint tests
+├── passthrough_env.bats         Environment variable passthrough tests
+├── path_resolution.bats         Path resolution tests
+├── posix_compliance.bats        POSIX shell compliance checks
+├── ruleset.bats                 GitHub API ruleset (branch/tag protection) tests
+├── sandbox_deny_log.bats        Sandbox deny log tests
+├── sandbox_linux_apparmor.bats  AppArmor profile tests (Linux)
+├── sandbox_linux_systemd.bats   systemd property generation tests (Linux)
+├── sandbox_profile.bats         Seatbelt profile generation tests (macOS)
+├── shim.bats                    Jailrun shim tests
+├── token.bats                   Keychain token management tests (_cmd_add / rotate / delete / list)
+├── test_config_cli.py           config_cli.py unit tests (Python unittest)
+├── test_config_migrate.py       config_migrate.py unit tests (Python unittest)
+└── test_proxy.py                proxy.py unit tests (Python unittest)
 ```
 
 ### Writing Tests
