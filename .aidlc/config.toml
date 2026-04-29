@@ -1,7 +1,7 @@
 # AI-DLC プロジェクト設定
 # 生成日: 2026-03-28
 
-starter_kit_version = "2.3.5"
+starter_kit_version = "2.5.0"
 
 [project]
 name = "jailrun"
@@ -88,6 +88,7 @@ command = "npx markdownlint-cli2"
 # - true: フィードバック送信機能を有効化（デフォルト）
 # - false: フィードバック送信機能を無効化（企業利用時のセキュリティ対策）
 enabled = true
+upstream_repo = "ikeisuke/ai-dlc-starter-kit"
 
 [rules.automation]
 # 自動化設定（v1.18.0で追加）
@@ -141,3 +142,15 @@ git_tracked = true
 # バージョンチェック設定（v2.1.4でupgrade_checkからリネーム）
 # enabled: true | false（デフォルト: true）
 enabled = true
+
+[rules.github]
+# GitHub 連携設定（v2.4.0で追加 / Unit 008 / #597 Unit G）
+# milestone_enabled: true | false - GitHub Milestone 自動作成 / 紐付け / close を有効にするか（既定: false）
+# - true: Inception Phase で自動作成、Operations Phase で自動 close
+# - false: Milestone 関連ステップを全てスキップ（後方互換性確保のため既定は false）
+milestone_enabled = false
+
+[rules.retrospective]
+# サイクル振り返りのフィードバック処理モード（v2.5.0で追加）
+# 許容値: "silent" / "mirror" / "disabled"
+feedback_mode = "mirror"
