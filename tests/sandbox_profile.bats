@@ -289,3 +289,29 @@ CONF
   [[ "$output" == *'export _CREDENTIAL_GUARD_SANDBOXED="1"'* ]]
   [[ "$output" == *'export SSH_AUTH_SOCK=""'* ]]
 }
+
+@test "GA1: _build_git_askpass writes git-askpass with mode 0700 (defense-in-depth)" {
+  # Cycle v0.3.2 / Unit 003 / Issue #49
+  # Spec: .aidlc/cycles/v0.3.2/design-artifacts/logical-designs/
+  #       unit_003_git_askpass_chmod_0700_logical_design.md
+  setup_jailrun_env
+  export _CREDENTIAL_GUARD_SANDBOXED=""
+
+  run env -u _CREDENTIAL_GUARD_SANDBOXED sh -c '
+    export JAILRUN_LIB="'"$JAILRUN_LIB"'"
+    . "$JAILRUN_LIB/sandbox.sh"
+    _tmpdir=$(mktemp -d)
+    _build_git_askpass
+    printf "%s\n" "$_tmpdir/git-askpass"
+  ' 2>/dev/null
+
+  [ "$status" -eq 0 ]
+  _askpass_path="$output"
+  # 前提条件チェック ($output 空・不存在時の二次被害回避)
+  [ -n "$_askpass_path" ]
+  [ -f "$_askpass_path" ]
+  assert_file_mode "$_askpass_path" "700"
+  # 二重ガード後にクリーンアップ
+  _tmpdir_for_test="$(dirname "$_askpass_path")"
+  [ -n "$_tmpdir_for_test" ] && [ -d "$_tmpdir_for_test" ] && rm -rf "$_tmpdir_for_test"
+}

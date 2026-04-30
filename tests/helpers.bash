@@ -265,6 +265,41 @@ assert_shim_not_called() {
 }
 
 # ----------------------------------------------------------------
+# Cross-platform file mode assertion (Cycle v0.3.2 / Unit 003)
+#
+# Spec: .aidlc/cycles/v0.3.2/design-artifacts/logical-designs/
+#       unit_003_git_askpass_chmod_0700_logical_design.md
+#
+# Supported: Darwin (BSD stat -f %A) / Linux (GNU coreutils stat -c %a).
+# Mode is normalized to 3-digit octal (leading 0 stripped) before compare.
+# Returns: 0=match / 1=mismatch / 2=unsupported platform.
+# ----------------------------------------------------------------
+
+assert_file_mode() {
+  local _path="$1"
+  local _expected="$2"
+  local _actual
+  case "$(uname)" in
+    Darwin)
+      _actual=$(stat -f %A "$_path")
+      ;;
+    Linux)
+      _actual=$(stat -c %a "$_path")
+      ;;
+    *)
+      printf 'assert_file_mode: unsupported platform: %s\n' "$(uname)" >&2
+      return 2
+      ;;
+  esac
+  _actual="${_actual#0}"
+  local _expected_norm="${_expected#0}"
+  [ "$_actual" = "$_expected_norm" ] || {
+    printf 'expected mode %s, got %s for %s\n' "$_expected_norm" "$_actual" "$_path" >&2
+    return 1
+  }
+}
+
+# ----------------------------------------------------------------
 # Unit 002 (ruleset.bats) helpers — PATH shim + sysbin whitelist
 #
 # Spec: .aidlc/cycles/v0.3.1/design-artifacts/logical-designs/
