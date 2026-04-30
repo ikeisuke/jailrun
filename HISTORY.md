@@ -1,5 +1,38 @@
 # Change History
 
+## v0.3.2 — 低優先度ハードニング Issue 消化と patch リリース (2026-04-30)
+
+v0.3.0 / v0.3.1 サイクルで採否確定したバックログ Issue 3 件（#52 / #50 / #49）を消化し、defense-in-depth 補強と境界ケースのエラーハンドリング向上を patch リリースとして届けた。
+
+### Changes
+
+#### Tty Guards
+
+- **`lib/token.sh@_cmd_rotate`**: `_cmd_add` と同じ `[ -t 0 ]` ガードを `stty -echo` / `stty echo` の前後に追加し、非 tty 環境（CI / bats / パイプ経由）でも `set -eu` 下で安全に完走するようにした（Issue #52, Unit 001）
+
+#### Error Handling
+
+- **`bin/bump-version`**: `--tag` 経路の先頭で `git rev-parse --git-dir` 事前ガードを追加し、git リポ外実行時に制御された `die()` メッセージ（`[bump-version]` プレフィックス + `--tag requires a git repository`）で終了するよう改善（Issue #50, Unit 002）
+
+#### Defense-in-Depth
+
+- **`lib/sandbox.sh@_build_git_askpass`**: `git-askpass` スクリプトの `chmod +x` を `chmod 0700` に置換し、所有者専用権限を defense-in-depth として明示（Issue #49, Unit 003）
+
+#### Tests
+
+- **`tests/token.bats`**: `_cmd_rotate` の非 tty 検証ケース（R4 通常入力 / R5 EOF / R6 空入力）を追加。stty PATH shim ログ経由のホワイトボックス検証で、ガード分岐が機能していることを確認
+- **`tests/bump_version.bats`**: git リポ外 `--tag` 実行時の制御された die ケース（TG1）を追加。stderr 2 層契約（`[bump-version]` 含む + `--tag requires a git repository` 含む + `fatal: not a git repository` 含まない）で die() 経路通過を担保
+- **`tests/sandbox_profile.bats`**: `_build_git_askpass` 後の mode 0700 検証ケース（GA1）を追加。前提条件チェック付きクリーンアップで `$output` 空時の二次被害を回避
+- **`tests/helpers.bash`**: OS 分岐共通ヘルパー `assert_file_mode` を新規追加（Darwin BSD `stat -f %A` / Linux GNU `stat -c %a` 対応、3 桁正規化、戻り値 0=一致 / 1=不一致 / 2=非対応プラットフォーム）
+
+#### Version Management
+
+- **`bin/jailrun` VERSION**: `0.3.1` → `0.3.2`（`bin/bump-version 0.3.2 --message "低優先度ハードニング Issue 消化と patch リリース"` 経由で `bin/jailrun` VERSION 行と `HISTORY.md` 先頭見出しを同時更新、Unit 004）
+
+### Compatibility
+
+既存の挙動・インターフェースは維持。`make test` 全体（bats 172 + Python 59 = 231 件）が緑であることを確認済み。
+
 ## v0.3.1 — テスト基盤補強・5 領域の回帰保護を確立 (2026-04-23)
 
 v0.3.0 のコードベース調査で特定されたテストカバレッジ不足 5 領域を全て解消。bats（token/ruleset/aws）と Python unittest（config_cli/config_migrate）を組み合わせ、本体コード無変更で品質補強リリースを届けた。
