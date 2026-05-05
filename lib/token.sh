@@ -166,10 +166,9 @@ _cmd_rotate() {
   esac
 
   printf '[%s] Enter new token: ' "$_name"
-  stty -echo
+  if [ -t 0 ]; then stty -echo; fi
   read _token
-  stty echo
-  echo
+  if [ -t 0 ]; then stty echo; echo; fi
 
   if [ -z "$_token" ]; then
     echo "[$_name] empty input, skipping"

@@ -298,6 +298,7 @@ main() {
 
   # git-dependent checks only run for real executions; --dry-run performs no git operations.
   if [ "$_ARG_TAG" -eq 1 ] && [ "$_ARG_DRY_RUN" -eq 0 ]; then
+    git rev-parse --git-dir >/dev/null 2>&1 || die "--tag requires a git repository"
     assert_no_existing_tag "$_version_norm"
     assert_clean_worktree
   fi

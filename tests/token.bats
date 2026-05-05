@@ -132,6 +132,60 @@ _jailrun_token() {
   [[ "$output" == *"--name is required"* ]]
 }
 
+# ------------------------------------------------------------------------
+# Non-tty guard cases (Cycle v0.3.2 / Unit 001 / Issue #52)
+# Spec: .aidlc/cycles/v0.3.2/design-artifacts/logical-designs/
+#       unit_001_token_rotate_tty_guard_logical_design.md
+# ------------------------------------------------------------------------
+
+@test "R4 rotate: 非 tty 通常入力 (guard skips stty, Keychain updated)" {
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=registered
+  export MOCK_SEC_DELETE_STATE=ok
+  export MOCK_SEC_ADD_STATE=ok
+  run bash -c 'printf "y\nnewtok\n" | "$JAILRUN_DIR/jailrun" token rotate --name github:classic'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"updated"* ]]
+  # ガードが機能して非 tty 環境では stty が呼ばれないことを確認
+  assert_shim_not_called stty
+  # Keychain delete + add の順序確認 (R1 と同じ動作を保証)
+  _del_line=$(grep -n $'^security\tdelete-generic-password' "$SHIM_CALLS_LOG" | head -1 | cut -d: -f1)
+  _add_line=$(grep -n $'^security\tadd-generic-password' "$SHIM_CALLS_LOG" | head -1 | cut -d: -f1)
+  [ -n "$_del_line" ]
+  [ -n "$_add_line" ]
+  [ "$_del_line" -lt "$_add_line" ]
+}
+
+@test "R5 rotate: 非 tty EOF (token input, no Keychain side-effect)" {
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=registered
+  # confirm に y を渡した後、トークン入力で EOF (パイプ閉じ)
+  run bash -c 'printf "y\n" | "$JAILRUN_DIR/jailrun" token rotate --name github:classic'
+  # set -eu 下で read _token が EOF で失敗 → 関数停止 (厳密なコード値は問わず非 0 のみ確認)
+  [ "$status" -ne 0 ]
+  # ガードによりスキップされ "stty: stdin isn't a terminal" は出ない
+  [[ "$output" != *"stty: stdin isn't a terminal"* ]]
+  # Keychain への副作用なし (delete / add が呼ばれない)
+  assert_shim_not_called security "delete-generic-password"
+  assert_shim_not_called security "add-generic-password"
+  # 非 tty では stty 自体も呼ばれない
+  assert_shim_not_called stty
+}
+
+@test "R6 rotate: 非 tty 空入力 (empty input, skipping)" {
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=registered
+  # confirm に y、トークン入力に空行 (改行のみ)
+  run bash -c 'printf "y\n\n" | "$JAILRUN_DIR/jailrun" token rotate --name github:classic'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"empty input, skipping"* ]]
+  # 空入力時は Keychain 更新が走らないことを確認
+  assert_shim_not_called security "delete-generic-password"
+  assert_shim_not_called security "add-generic-password"
+  # 非 tty では stty 自体も呼ばれない
+  assert_shim_not_called stty
+}
+
 # ========================================================================
 # _cmd_delete
 # ========================================================================

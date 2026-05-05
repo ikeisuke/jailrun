@@ -98,6 +98,28 @@ assert_no_state_change() {
   grep -q "Release via stdin" HISTORY.md
 }
 
+@test "TG1 --tag fails outside a git repository with controlled die message" {
+  # NOTE: Cycle v0.3.2 / Unit 002 / Issue #50
+  # 事前ガード (git rev-parse --git-dir) が _ARG_TAG=1 && _ARG_DRY_RUN=0 経路で発火し、
+  # 制御された die() メッセージで終了することを検証する。
+  NONGIT="$BATS_TEST_TMPDIR/nongit"
+  mkdir -p "$NONGIT/bin"
+  cp -p bin/jailrun "$NONGIT/bin/jailrun"
+  cp -p HISTORY.md "$NONGIT/HISTORY.md"
+  cd "$NONGIT"
+  [ ! -d .git ]
+  run "$BUMP_VERSION" 0.2.0 --message "Release 0.2.0" --tag
+  [ "$status" -eq 1 ]
+  # die() 経路通過の証拠: [bump-version] プレフィックスを含む
+  [[ "$output" == *"[bump-version]"* ]]
+  # 制御メッセージ本文を含む
+  [[ "$output" == *"--tag requires a git repository"* ]]
+  # 生 git エラーが露出していない
+  [[ "$output" != *"fatal: not a git repository"* ]]
+  # ファイル変更なし (VERSION は fixture の 0.1.0 のまま)
+  grep -qE '^VERSION="0\.1\.0"$' bin/jailrun
+}
+
 @test "--tag creates git tag v<version>" {
   run "$BUMP_VERSION" 0.2.0 --message "Release 0.2.0" --tag
   [ "$status" -eq 0 ]

@@ -152,7 +152,7 @@ esac
 
 _build_git_askpass() {
   printf '#!/bin/sh\necho "$GH_TOKEN"\n' > "$_tmpdir/git-askpass"
-  chmod +x "$_tmpdir/git-askpass"
+  chmod 0700 "$_tmpdir/git-askpass"
 }
 
 # generate env var spec file (SET/UNSET format)
