@@ -34,7 +34,7 @@ _JSON_DEFAULT_AK1='{"AccessKeyId":"AK1","SecretAccessKey":"SK1","SessionToken":"
 _JSON_WORK_AK2='{"AccessKeyId":"AK2","SecretAccessKey":"SK2","SessionToken":"ST2","Expiration":"2026-01-01T00:00:00Z"}'
 _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3","Expiration":"2026-01-01T00:00:00Z"}'
 
-@test "AW1 single default profile 正常系 (session_token あり、jq 有無非依存)" {
+@test "AW1 single default profile success (session_token present, jq optional)" {
   _aws_preflight
   setup_aws_shims
 
@@ -67,7 +67,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_creds_line_in_nth default 2 aws_session_token sessiontokentest
 }
 
-@test "AW2 session_token なし (aws_session_token 行が省略される)" {
+@test "AW2 no session_token (aws_session_token line omitted)" {
   _aws_preflight
   setup_aws_shims
 
@@ -85,7 +85,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_creds_line_absent default aws_session_token
 }
 
-@test "AW3 AGENT_AWS_PROFILES override (default セクションに override 先 credentials)" {
+@test "AW3 AGENT_AWS_PROFILES override (default section override credentials)" {
   _aws_preflight
   setup_aws_shims
 
@@ -120,7 +120,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_creds_line work aws_secret_access_key WORKSECRET
 }
 
-@test "AW4 複数プロファイル (default + work、書き込み順序と default 重複を固定)" {
+@test "AW4 multiple profiles (default + work, write order and default dedup)" {
   _aws_preflight
   setup_aws_shims
 
@@ -158,7 +158,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_creds_line work aws_secret_access_key SK2
 }
 
-@test "AW5 allow list フィルタ (prod は除外され work のみ処理)" {
+@test "AW5 allow list filter (prod excluded, work only)" {
   _aws_preflight
   setup_aws_shims
 
@@ -185,7 +185,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_config_section_not_exists "profile prod"
 }
 
-@test "AW6 異常系 aws configure export-credentials 失敗 (fail-open: WARN + セクション未書き込み)" {
+@test "AW6 abnormal aws configure export-credentials failure (fail-open: WARN + section not written)" {
   _aws_preflight
   setup_aws_shims
 
@@ -206,7 +206,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_creds_section_not_exists default
 }
 
-@test "AW7 aws 未インストール (shim 削除、空ファイルのまま関数終了)" {
+@test "AW7 aws not installed (shim removed, function exits with empty file)" {
   _aws_preflight
   setup_aws_shims
 
@@ -228,7 +228,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_configure_not_called export-credentials default
 }
 
-@test "AW8 _write_aws_profile 単体 (session_token 空文字時の省略)" {
+@test "AW8 _write_aws_profile unit (session_token empty omitted)" {
   _aws_preflight
   setup_aws_shims
 
@@ -244,7 +244,7 @@ _JSON_PROD_AK3='{"AccessKeyId":"AK3","SecretAccessKey":"SK3","SessionToken":"ST3
   assert_aws_creds_line_absent myprof aws_session_token
 }
 
-@test "AW9 jq 不在経路 (grep/cut fallback、AW1 と同値結果)" {
+@test "AW9 jq absent (grep/cut fallback, same as AW1)" {
   _aws_preflight
   setup_aws_shims_without_jq
 

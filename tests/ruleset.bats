@@ -32,7 +32,7 @@ _jailrun_ruleset() {
 # 1. 主要シナリオ（apply / skip / 失敗）
 # ========================================================================
 
-@test "RSB1 ruleset: branch/tag 両方とも新規作成 (POST 呼ばれる、payload 部分一致)" {
+@test "RSB1 ruleset: branch/tag both new (POST called, payload partial match)" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES=""
@@ -48,7 +48,7 @@ _jailrun_ruleset() {
   assert_gh_payload_contains tag '"include": ["~ALL"]'
 }
 
-@test "RSB2 ruleset: branch 既存スキップ、tag は apply" {
+@test "RSB2 ruleset: branch existing skip, tag apply" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES="jailrun-branch-protection"
@@ -60,7 +60,7 @@ _jailrun_ruleset() {
   assert_gh_post_called tag
 }
 
-@test "RST2 ruleset: tag 既存スキップ、branch は apply" {
+@test "RST2 ruleset: tag existing skip, branch apply" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES="jailrun-tag-protection"
@@ -71,7 +71,7 @@ _jailrun_ruleset() {
   assert_gh_post_not_called tag
 }
 
-@test "RSB3 ruleset: 両方既存で POST 一度も呼ばれない" {
+@test "RSB3 ruleset: both existing, POST not called" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES=$'jailrun-branch-protection\njailrun-tag-protection'
@@ -82,7 +82,7 @@ _jailrun_ruleset() {
   assert_gh_post_not_called tag
 }
 
-@test "RSF1 ruleset: branch POST 失敗で exit 非 0 (tag POST 失敗も本ケースで代表)" {
+@test "RSF1 ruleset: branch POST failure exits non-zero (tag POST failure represented)" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES=""
@@ -93,7 +93,7 @@ _jailrun_ruleset() {
   assert_gh_post_called branch
 }
 
-@test "RSF2 ruleset: list API 失敗時の POST 発火 (本体仕様の明文化)" {
+@test "RSF2 ruleset: POST fires on list API failure (spec clarification)" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=fail
   export MOCK_GH_POST_STATE=ok
@@ -108,7 +108,7 @@ _jailrun_ruleset() {
 # 2. 認証・環境ガード
 # ========================================================================
 
-@test "RSG1 ruleset: gh CLI 未インストール (PATH 隔離で決定論的に再現)" {
+@test "RSG1 ruleset: gh CLI not installed (PATH isolation deterministic)" {
   # shim-bin/gh を削除。PATH は shim-bin:sysbin のみ (sysbin に gh なし、
   # /usr/bin や /bin も PATH 外) のため、実環境 gh への fallthrough なし
   rm "$BATS_TEST_TMPDIR/shim-bin/gh"
@@ -118,7 +118,7 @@ _jailrun_ruleset() {
   assert_gh_auth_not_called
 }
 
-@test "RSG2 ruleset: gh 未認証 (auth status fail)" {
+@test "RSG2 ruleset: gh not authenticated (auth status fail)" {
   export MOCK_GH_AUTH_STATE=fail
   run _jailrun_ruleset owner/repo
   [ "$status" -eq 1 ]
@@ -129,7 +129,7 @@ _jailrun_ruleset() {
   assert_gh_post_not_called tag
 }
 
-@test "RSG3 ruleset: --dry-run で auth/list/POST いずれも呼ばれない" {
+@test "RSG3 ruleset: --dry-run skips auth/list/POST" {
   # dry-run は auth check をスキップするため MOCK_GH_AUTH_STATE=fail でも通る
   export MOCK_GH_AUTH_STATE=fail
   run _jailrun_ruleset --dry-run owner/repo
@@ -145,27 +145,27 @@ _jailrun_ruleset() {
 # 3. 引数パース
 # ========================================================================
 
-@test "RSO1 ruleset: --help で usage 出力" {
+@test "RSO1 ruleset: --help shows usage" {
   run _jailrun_ruleset --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: jailrun ruleset"* ]]
   assert_gh_auth_not_called
 }
 
-@test "RSO1b ruleset: -h で usage 出力" {
+@test "RSO1b ruleset: -h shows usage" {
   run _jailrun_ruleset -h
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: jailrun ruleset"* ]]
   assert_gh_auth_not_called
 }
 
-@test "RSO2 ruleset: 未知オプションで exit 1" {
+@test "RSO2 ruleset: unknown option exits 1" {
   run _jailrun_ruleset --unknown
   [ "$status" -eq 1 ]
   [[ "$output" == *"unknown option"* ]]
 }
 
-@test "RSO3 ruleset: 位置引数が 2 つ以上で exit 1" {
+@test "RSO3 ruleset: 2+ positional args exits 1" {
   export MOCK_GH_AUTH_STATE=ok
   run _jailrun_ruleset owner/repo extra
   [ "$status" -eq 1 ]
@@ -176,7 +176,7 @@ _jailrun_ruleset() {
 # 4. リポジトリ自動検出
 # ========================================================================
 
-@test "RSR1 ruleset: git@ SSH URL 検出 (引数なし)" {
+@test "RSR1 ruleset: git@ SSH URL detection (no args)" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES=""
@@ -188,7 +188,7 @@ _jailrun_ruleset() {
   assert_gh_api_called POST "repos/myorg/myrepo/rulesets"
 }
 
-@test "RSR2 ruleset: https URL 検出" {
+@test "RSR2 ruleset: https URL detection" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES=""
@@ -200,7 +200,7 @@ _jailrun_ruleset() {
   assert_gh_api_called POST "repos/myorg/myrepo/rulesets"
 }
 
-@test "RSR3 ruleset: ssh:// URL 検出" {
+@test "RSR3 ruleset: ssh:// URL detection" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES=""
@@ -212,7 +212,7 @@ _jailrun_ruleset() {
   assert_gh_api_called POST "repos/myorg/myrepo/rulesets"
 }
 
-@test "RSR4 ruleset: https URL with user@ 検出" {
+@test "RSR4 ruleset: https URL with user@ detection" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GH_LIST_STATE=ok
   export MOCK_GH_RULESETS_NAMES=""
@@ -224,7 +224,7 @@ _jailrun_ruleset() {
   assert_gh_api_called POST "repos/myorg/myrepo/rulesets"
 }
 
-@test "RSR5 ruleset: remote 無し (empty) で exit 1" {
+@test "RSR5 ruleset: no remote (empty) exits 1" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GIT_REMOTE_STATE=empty
   run _jailrun_ruleset
@@ -232,7 +232,7 @@ _jailrun_ruleset() {
   [[ "$output" == *"no git remote 'origin' found"* ]]
 }
 
-@test "RSR6 ruleset: 未対応 URL 形式で exit 1" {
+@test "RSR6 ruleset: unsupported URL format exits 1" {
   export MOCK_GH_AUTH_STATE=ok
   export MOCK_GIT_REMOTE_STATE=ok
   export MOCK_GIT_REMOTE_URL="gitlab.com:myorg/myrepo.git"

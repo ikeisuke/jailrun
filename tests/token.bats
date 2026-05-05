@@ -26,7 +26,7 @@ _jailrun_token() {
 # _cmd_add
 # ========================================================================
 
-@test "A1 add: Darwin 正常系 (find=empty, add=ok)" {
+@test "A1 add: Darwin success (find=empty, add=ok)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=empty
   export MOCK_SEC_ADD_STATE=ok
@@ -37,7 +37,7 @@ _jailrun_token() {
   assert_shim_called security "add-generic-password -s jailrun:github:classic -a jailrun-test"
 }
 
-@test "A1L add: Linux 正常系 (lookup=empty, store=ok)" {
+@test "A1L add: Linux success (lookup=empty, store=ok)" {
   export MOCK_UNAME=Linux
   export MOCK_SECTOOL_LOOKUP_STATE=empty
   export MOCK_SECTOOL_STORE_STATE=ok
@@ -48,7 +48,7 @@ _jailrun_token() {
   assert_shim_called "secret-tool" "store --label=jailrun:github:classic service jailrun:github:classic account jailrun-test"
 }
 
-@test "A2 add: Darwin Keychain 失敗 (find=fail, add=fail)" {
+@test "A2 add: Darwin Keychain failure (find=fail, add=fail)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=fail
   export MOCK_SEC_ADD_STATE=fail
@@ -59,14 +59,14 @@ _jailrun_token() {
   assert_shim_called security "add-generic-password -s jailrun:github:classic -a jailrun-test"
 }
 
-@test "A3 add: 不正引数 (--name 欠落)" {
+@test "A3 add: invalid arg (--name missing)" {
   export MOCK_UNAME=Darwin
   run _jailrun_token add
   [ "$status" -eq 1 ]
   [[ "$output" == *"--name is required"* ]]
 }
 
-@test "A4 add: 不正引数 (未知オプション)" {
+@test "A4 add: invalid arg (unknown option)" {
   export MOCK_UNAME=Darwin
   run _jailrun_token add --name foo --other
   [ "$status" -eq 1 ]
@@ -80,7 +80,7 @@ _jailrun_token() {
 # Hybrid pattern (_rc capture + INT/TERM scoped trap) verification
 # ------------------------------------------------------------------------
 
-@test "AE1 add: 非 tty EOF (no Keychain side-effect, _rc capture)" {
+@test "AE1 add: non-tty EOF (no Keychain side-effect, _rc capture)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=empty
   export MOCK_SEC_ADD_STATE=ok
@@ -99,7 +99,7 @@ _jailrun_token() {
 # _cmd_rotate
 # ========================================================================
 
-@test "R1 rotate: Darwin 正常系 (find=registered, delete=ok, add=ok)" {
+@test "R1 rotate: Darwin success (find=registered, delete=ok, add=ok)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   export MOCK_SEC_DELETE_STATE=ok
@@ -116,7 +116,7 @@ _jailrun_token() {
   [ "$_del_line" -lt "$_add_line" ]
 }
 
-@test "R1L rotate: Linux 正常系 (lookup=registered, clear=ok, store=ok)" {
+@test "R1L rotate: Linux success (lookup=registered, clear=ok, store=ok)" {
   export MOCK_UNAME=Linux
   export MOCK_SECTOOL_LOOKUP_STATE=registered
   export MOCK_SECTOOL_CLEAR_STATE=ok
@@ -131,7 +131,7 @@ _jailrun_token() {
   [ "$_clr_line" -lt "$_sto_line" ]
 }
 
-@test "R2 rotate: Darwin 未登録 (find=empty)" {
+@test "R2 rotate: Darwin unregistered (find=empty)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=empty
   run bash -c '"$JAILRUN_DIR/jailrun" token rotate --name github:classic'
@@ -139,7 +139,7 @@ _jailrun_token() {
   [[ "$output" == *"not registered"* ]]
 }
 
-@test "R2b rotate: Darwin Keychain 失敗 (find=fail, empty と同値)" {
+@test "R2b rotate: Darwin Keychain failure (find=fail, same as empty)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=fail
   run bash -c '"$JAILRUN_DIR/jailrun" token rotate --name github:classic'
@@ -147,7 +147,7 @@ _jailrun_token() {
   [[ "$output" == *"not registered"* ]]
 }
 
-@test "R3 rotate: 不正引数 (--name 欠落)" {
+@test "R3 rotate: invalid arg (--name missing)" {
   export MOCK_UNAME=Darwin
   run _jailrun_token rotate
   [ "$status" -eq 1 ]
@@ -160,7 +160,7 @@ _jailrun_token() {
 #       unit_001_token_rotate_tty_guard_logical_design.md
 # ------------------------------------------------------------------------
 
-@test "R4 rotate: 非 tty 通常入力 (guard skips stty, Keychain updated)" {
+@test "R4 rotate: non-tty normal input (guard skips stty, Keychain updated)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   export MOCK_SEC_DELETE_STATE=ok
@@ -178,7 +178,7 @@ _jailrun_token() {
   [ "$_del_line" -lt "$_add_line" ]
 }
 
-@test "R5 rotate: 非 tty EOF (token input, no Keychain side-effect)" {
+@test "R5 rotate: non-tty EOF (token input, no Keychain side-effect)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   # confirm に y を渡した後、トークン入力で EOF (パイプ閉じ)
@@ -194,7 +194,7 @@ _jailrun_token() {
   assert_shim_not_called stty
 }
 
-@test "R6 rotate: 非 tty 空入力 (empty input, skipping)" {
+@test "R6 rotate: non-tty empty input (empty input, skipping)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   # confirm に y、トークン入力に空行 (改行のみ)
@@ -215,7 +215,7 @@ _jailrun_token() {
 #   できないため、stdin はファイル経由で渡し、関数を **親シェル**で実行する
 # ------------------------------------------------------------------------
 
-@test "RT1 rotate: trap -p 差分なし (source-based, file redirect)" {
+@test "RT1 rotate: trap -p no diff (source-based, file redirect)" {
   setup_jailrun_env
   setup_token_shims
   export MOCK_UNAME=Darwin
@@ -237,7 +237,7 @@ _jailrun_token() {
   [ "$status" -eq 0 ]
 }
 
-@test "AT1 add: trap -p 差分なし (source-based, file redirect)" {
+@test "AT1 add: trap -p no diff (source-based, file redirect)" {
   setup_jailrun_env
   setup_token_shims
   export MOCK_UNAME=Darwin
@@ -263,7 +263,7 @@ _jailrun_token() {
 # 呼び出し元の事前 INT/TERM trap を保持すること
 # ------------------------------------------------------------------------
 
-@test "RT2 rotate: 呼び出し元の事前 INT/TERM trap を保持する" {
+@test "RT2 rotate: preserves caller pre-existing INT/TERM trap" {
   setup_jailrun_env
   setup_token_shims
   export MOCK_UNAME=Darwin
@@ -287,7 +287,7 @@ _jailrun_token() {
   [ "$status" -eq 0 ]
 }
 
-@test "AT2 add: 呼び出し元の事前 INT/TERM trap を保持する" {
+@test "AT2 add: preserves caller pre-existing INT/TERM trap" {
   setup_jailrun_env
   setup_token_shims
   export MOCK_UNAME=Darwin
@@ -314,7 +314,7 @@ _jailrun_token() {
 # _cmd_delete
 # ========================================================================
 
-@test "D1 delete: Darwin 正常系 (find=registered, delete=ok)" {
+@test "D1 delete: Darwin success (find=registered, delete=ok)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   export MOCK_SEC_DELETE_STATE=ok
@@ -324,7 +324,7 @@ _jailrun_token() {
   assert_shim_called security "delete-generic-password -s jailrun:github:classic -a jailrun-test"
 }
 
-@test "D1L delete: Linux 正常系 (lookup=registered, clear=ok)" {
+@test "D1L delete: Linux success (lookup=registered, clear=ok)" {
   export MOCK_UNAME=Linux
   export MOCK_SECTOOL_LOOKUP_STATE=registered
   export MOCK_SECTOOL_CLEAR_STATE=ok
@@ -334,7 +334,7 @@ _jailrun_token() {
   assert_shim_called "secret-tool" "clear service jailrun:github:classic account jailrun-test"
 }
 
-@test "D2 delete: Darwin 未登録 (find=empty)" {
+@test "D2 delete: Darwin unregistered (find=empty)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=empty
   run _jailrun_token delete --name github:classic
@@ -342,7 +342,7 @@ _jailrun_token() {
   [[ "$output" == *"not registered"* ]]
 }
 
-@test "D2b delete: Darwin Keychain 失敗 (find=fail, empty と同値)" {
+@test "D2b delete: Darwin Keychain failure (find=fail, same as empty)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=fail
   run _jailrun_token delete --name github:classic
@@ -350,7 +350,7 @@ _jailrun_token() {
   [[ "$output" == *"not registered"* ]]
 }
 
-@test "D3 delete: 不正引数 (--name 欠落)" {
+@test "D3 delete: invalid arg (--name missing)" {
   export MOCK_UNAME=Darwin
   run _jailrun_token delete
   [ "$status" -eq 1 ]
@@ -361,7 +361,7 @@ _jailrun_token() {
 # _cmd_list
 # ========================================================================
 
-@test "L1 list: Darwin 正常系 (dump 2件 + 無関係1件, find=registered)" {
+@test "L1 list: Darwin success (dump 2 entries + 1 unrelated, find=registered)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_DUMP_STATE=with_entries
   export MOCK_SEC_DUMP_OUTPUT='    "svce"<blob>="jailrun:github:classic"
@@ -387,7 +387,7 @@ _jailrun_token() {
   assert_shim_not_called security "com.apple.someapp.other"
 }
 
-@test "L2a list: Darwin 登録なし (dump=empty)" {
+@test "L2a list: Darwin no registered (dump=empty)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_DUMP_STATE=empty
   run _jailrun_token list
@@ -395,7 +395,7 @@ _jailrun_token() {
   [[ "$output" == *"no tokens registered"* ]]
 }
 
-@test "L2b list: Darwin security 失敗 (dump=fail, empty と同値)" {
+@test "L2b list: Darwin security failure (dump=fail, same as empty)" {
   export MOCK_UNAME=Darwin
   export MOCK_SEC_DUMP_STATE=fail
   run _jailrun_token list
@@ -403,7 +403,7 @@ _jailrun_token() {
   [[ "$output" == *"no tokens registered"* ]]
 }
 
-@test "L3 list: Linux 分岐 (uname=Linux)" {
+@test "L3 list: Linux branch (uname=Linux)" {
   export MOCK_UNAME=Linux
   run _jailrun_token list
   [ "$status" -eq 0 ]
