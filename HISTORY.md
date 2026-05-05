@@ -1,5 +1,48 @@
 # Change History
 
+## v0.3.3 — CI 構築と tty EOF エコー復元の trap 化（patch リリース） (2026-05-05)
+
+v0.3.0 / v0.3.1 / v0.3.2 サイクルで採否確定したバックログ Issue 2 件（#59 CI 構築 + #57 tty EOF エコー復元）を消化し、CI 自動実行による品質保証付きマージフローと、トークン入力中断時の端末状態復元保証を patch リリースとして届けた。
+
+### Changes
+
+#### CI
+
+- **`.github/workflows/ci.yml` 新設**: GitHub Actions で `make test` を macOS で自動実行する CI ワークフローを追加（Issue #59, Unit 001）
+  - トリガー: `pull_request`（任意ブランチ）+ `push.branches: [main]`（main マージ後の post-merge 検証）
+  - `jobs.test.strategy.matrix.os: [macos-latest]`、`strategy.fail-fast: false` を明示宣言
+  - `permissions: contents: read` をトップレベルで宣言（GITHUB_TOKEN 既定スコープを read-only に縮約、最小権限）
+  - `env: LANG=en_US.UTF-8 / LC_ALL=en_US.UTF-8` を job レベルで明示し、bats が日本語テスト名を含む `@test "..."` を正しくパースできるロケールを保証
+  - `actions/checkout@v4` + `actions/setup-python@v5`（`python-version: '3.x'`）でメジャー固定
+  - bats セットアップは `brew install bats-core` で 1.x を確実に取得
+  - `make test` を実行し、bats と Python unittest の両スイート出力をジョブログに残す
+  - **Linux CI 対応の持ち越し**: Issue #59 の当初受け入れ基準には macOS + Linux 両 OS マトリクスが含まれていたが、Operations Phase 初回 CI 実行で Linux 側に多数の OS skip ガード不足とテスト互換性問題（`tests/sandbox_profile.bats` Darwin 専用 / `tests/token.bats` Keychain shim Linux 互換 / `tests/jailrun.bats` 等）が判明し、v0.3.3 patch スコープを大きく超えるため Issue #62 として次サイクル以降に持ち越し
+
+#### Tty Guards
+
+- **`lib/token.sh@_cmd_add` / `_cmd_rotate`**: `stty -echo` 後の `read _token` が EOF / SIGINT / SIGTERM / 関数 return のいずれで失敗しても `stty echo` を確実に実行するハイブリッド方式に書き換え（Issue #57, Unit 002）
+  - 第一候補（`_rc=0; read _token || _rc=$?` で `set -e` 起因の即停止を抑止）と INT/TERM 限定 trap（`trap '...stty echo...; eval "${_saved_trap:-trap - INT TERM}"; exit 130' INT TERM`）の併用で 4 経路すべてを保証
+  - `EXIT` トラップは禁止条件に従い不使用、INT/TERM trap は関数内で設定 → 関数完走時に `eval "${_saved_trap:-trap - INT TERM}"` で必ず解除し、呼び出し元シェルの `trap -p` 出力に差分を残さない
+  - **呼び出し元の事前 INT/TERM trap 保存・復元**: `_saved_trap=$(trap -p INT TERM)` で関数開始時に既存 trap を退避し、関数末尾と handler 内で `eval` で復元する。事前 trap が無い場合は `${_saved_trap:-trap - INT TERM}` のフォールバックでデフォルトに戻す。これにより `lib/token.sh` を source した呼び出し元が事前にクリーンアップ trap を設定していても破壊しない（Operations Phase マージ前 codex レビュー反映）
+  - `_cmd_add` / `_cmd_rotate` の両関数で同一パターン（5〜7 行差分）に揃え、保守者にとって読みやすい対称構造を確立
+  - `lib/token.sh` 末尾に `_JAILRUN_TOKEN_NODISPATCH=1` ガードを追加（sourced 時のみ `(return 0 2>/dev/null) && return 0` で dispatch スキップ、execute 経路は無影響）。bats source-based テストの infrastructure として最小スコープで導入
+
+#### Tests
+
+- **`tests/token.bats` に 5 ケース追加**（計 27 件、新規 AE1 / RT1 / AT1 / RT2 / AT2）
+  - **AE1**: `_cmd_add` 非 TTY EOF（即パイプ閉じ）で exit 非 0 + Keychain `add-generic-password` shim 呼び出しなし + 非 TTY ガードによる `stty` 自体非呼び出しを検証
+  - **RT1 / AT1**: source ベース + file redirect で `_cmd_rotate` / `_cmd_add` 関数呼び出し前後の `trap -p` 差分なし（事前 trap 無しケース）を検証
+  - **RT2 / AT2**: 呼び出し元で事前 INT/TERM trap を設定した状態で `_cmd_rotate` / `_cmd_add` を呼び出し、関数完走後も `trap -p INT TERM` 差分なしを検証（Operations Phase マージ前 codex レビュー反映で追加）
+  - **Mutation 検証**: `lib/token.sh` の `trap` 解除行を削除すると RT1 / AT1 が即座に失敗することを確認、test infrastructure が trap 非破壊検証として機能することを保証
+
+#### Version Management
+
+- **`bin/jailrun` VERSION**: `0.3.2` → `0.3.3`（`bin/bump-version 0.3.3 --message "CI 構築と tty EOF エコー復元の trap 化（patch リリース）"` 経由で `bin/jailrun` VERSION 行と `HISTORY.md` 先頭見出しを同時更新、Unit 003）
+
+### Compatibility
+
+既存の挙動・インターフェースは維持。`make test` 全体（bats 177 + Python unittest 59 = 236 件）が緑であることを確認済み。Operations Phase マージ前 codex レビューで指摘された呼び出し元 trap 保存・復元の P2 補強を反映済み。
+
 ## v0.3.2 — 低優先度ハードニング Issue 消化と patch リリース (2026-04-30)
 
 v0.3.0 / v0.3.1 サイクルで採否確定したバックログ Issue 3 件（#52 / #50 / #49）を消化し、defense-in-depth 補強と境界ケースのエラーハンドリング向上を patch リリースとして届けた。

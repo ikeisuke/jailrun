@@ -114,7 +114,7 @@ _parse_name_option() {
 _cmd_add() {
   _parse_name_option "add" "$@"
 
-  local _service _existing
+  local _service _existing _rc _saved_trap
   _service=$(_service_name "$_name")
   _existing=$(_get_token "$_service") || true
 
@@ -125,9 +125,14 @@ _cmd_add() {
   fi
 
   printf '[%s] Enter token: ' "$_name"
+  _rc=0
+  _saved_trap=$(trap -p INT TERM)
   if [ -t 0 ]; then stty -echo; fi
-  read _token
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; exit 130' INT TERM
+  read _token || _rc=$?
+  eval "${_saved_trap:-trap - INT TERM}"
   if [ -t 0 ]; then stty echo; echo; fi
+  [ "$_rc" -eq 0 ] || return "$_rc"
 
   if [ -z "$_token" ]; then
     echo "[$_name] empty input, skipping"
@@ -141,7 +146,7 @@ _cmd_add() {
 _cmd_rotate() {
   _parse_name_option "rotate" "$@"
 
-  local _service _current
+  local _service _current _rc _saved_trap
   _service=$(_service_name "$_name")
   _current=$(_get_token "$_service") || true
 
@@ -166,9 +171,14 @@ _cmd_rotate() {
   esac
 
   printf '[%s] Enter new token: ' "$_name"
+  _rc=0
+  _saved_trap=$(trap -p INT TERM)
   if [ -t 0 ]; then stty -echo; fi
-  read _token
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; exit 130' INT TERM
+  read _token || _rc=$?
+  eval "${_saved_trap:-trap - INT TERM}"
   if [ -t 0 ]; then stty echo; echo; fi
+  [ "$_rc" -eq 0 ] || return "$_rc"
 
   if [ -z "$_token" ]; then
     echo "[$_name] empty input, skipping"
@@ -238,6 +248,13 @@ _cmd_list() {
 # ============================================================
 # Section 6: CLI dispatch
 # ============================================================
+
+# Allow sourcing for testing without triggering dispatch (Unit 002 / Issue #57).
+# `(return 0 2>/dev/null)` succeeds only when sourced; in executed mode it fails
+# silently and falls through to dispatch.
+if [ "${_JAILRUN_TOKEN_NODISPATCH:-0}" = "1" ] && (return 0 2>/dev/null); then
+  return 0
+fi
 
 _subcmd="${1:-}"
 shift 2>/dev/null || true
