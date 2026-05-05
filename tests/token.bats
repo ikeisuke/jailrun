@@ -73,6 +73,28 @@ _jailrun_token() {
   [[ "$output" == *"unknown option"* ]]
 }
 
+# ------------------------------------------------------------------------
+# Cycle v0.3.3 / Unit 002 / Issue #57
+# Spec: .aidlc/cycles/v0.3.3/design-artifacts/logical-designs/
+#       unit_002_token_cmd_tty_echo_restore_logical_design.md
+# Hybrid pattern (_rc capture + INT/TERM scoped trap) verification
+# ------------------------------------------------------------------------
+
+@test "AE1 add: 非 tty EOF (no Keychain side-effect, _rc capture)" {
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=empty
+  export MOCK_SEC_ADD_STATE=ok
+  # 即 EOF (パイプ閉じ) で read _token が失敗
+  run bash -c 'printf "" | "$JAILRUN_DIR/jailrun" token add --name github:classic'
+  [ "$status" -ne 0 ]
+  # ガードによりスキップされ stty: stdin isn't a terminal は出ない
+  [[ "$output" != *"stty: stdin isn't a terminal"* ]]
+  # _rc capture により return が走り Keychain への書き込みは発生しない
+  assert_shim_not_called security "add-generic-password"
+  # 非 tty では stty 自体も呼ばれない
+  assert_shim_not_called stty
+}
+
 # ========================================================================
 # _cmd_rotate
 # ========================================================================
@@ -184,6 +206,56 @@ _jailrun_token() {
   assert_shim_not_called security "add-generic-password"
   # 非 tty では stty 自体も呼ばれない
   assert_shim_not_called stty
+}
+
+# ------------------------------------------------------------------------
+# Cycle v0.3.3 / Unit 002 / Issue #57
+# trap -p invariant: 関数完走後に呼び出し元 trap 状態に差分がないこと
+# ⚠ パイプライン (`printf ... | _cmd_*`) は subshell 実行で trap を観測
+#   できないため、stdin はファイル経由で渡し、関数を **親シェル**で実行する
+# ------------------------------------------------------------------------
+
+@test "RT1 rotate: trap -p 差分なし (source-based, file redirect)" {
+  setup_jailrun_env
+  setup_token_shims
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=registered
+  export MOCK_SEC_DELETE_STATE=ok
+  export MOCK_SEC_ADD_STATE=ok
+  run bash -c '
+    set -eu
+    export _JAILRUN_TOKEN_NODISPATCH=1
+    . "$JAILRUN_LIB/token.sh"
+    USER=jailrun-test
+    TMPIN="$BATS_TEST_TMPDIR/rt1-input"
+    printf "y\nnewtok\n" > "$TMPIN"
+    BEFORE=$(trap -p)
+    _cmd_rotate --name github:classic < "$TMPIN" >/dev/null
+    AFTER=$(trap -p)
+    [ "$BEFORE" = "$AFTER" ]
+  '
+  [ "$status" -eq 0 ]
+}
+
+@test "AT1 add: trap -p 差分なし (source-based, file redirect)" {
+  setup_jailrun_env
+  setup_token_shims
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=empty
+  export MOCK_SEC_ADD_STATE=ok
+  run bash -c '
+    set -eu
+    export _JAILRUN_TOKEN_NODISPATCH=1
+    . "$JAILRUN_LIB/token.sh"
+    USER=jailrun-test
+    TMPIN="$BATS_TEST_TMPDIR/at1-input"
+    printf "newtok\n" > "$TMPIN"
+    BEFORE=$(trap -p)
+    _cmd_add --name github:classic < "$TMPIN" >/dev/null
+    AFTER=$(trap -p)
+    [ "$BEFORE" = "$AFTER" ]
+  '
+  [ "$status" -eq 0 ]
 }
 
 # ========================================================================
