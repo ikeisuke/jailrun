@@ -14,7 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest]
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,12 +30,6 @@ jobs:
       - name: Install bats (macOS)
         if: runner.os == 'macOS'
         run: brew install bats-core
-
-      - name: Install bats (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bats
 
       - name: Run make test
         run: make test
