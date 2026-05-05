@@ -114,7 +114,7 @@ _parse_name_option() {
 _cmd_add() {
   _parse_name_option "add" "$@"
 
-  local _service _existing _rc
+  local _service _existing _rc _saved_trap
   _service=$(_service_name "$_name")
   _existing=$(_get_token "$_service") || true
 
@@ -126,10 +126,11 @@ _cmd_add() {
 
   printf '[%s] Enter token: ' "$_name"
   _rc=0
+  _saved_trap=$(trap -p INT TERM)
   if [ -t 0 ]; then stty -echo; fi
-  trap 'if [ -t 0 ]; then stty echo; echo; fi; trap - INT TERM; exit 130' INT TERM
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; exit 130' INT TERM
   read _token || _rc=$?
-  trap - INT TERM
+  eval "${_saved_trap:-trap - INT TERM}"
   if [ -t 0 ]; then stty echo; echo; fi
   [ "$_rc" -eq 0 ] || return "$_rc"
 
@@ -145,7 +146,7 @@ _cmd_add() {
 _cmd_rotate() {
   _parse_name_option "rotate" "$@"
 
-  local _service _current _rc
+  local _service _current _rc _saved_trap
   _service=$(_service_name "$_name")
   _current=$(_get_token "$_service") || true
 
@@ -171,10 +172,11 @@ _cmd_rotate() {
 
   printf '[%s] Enter new token: ' "$_name"
   _rc=0
+  _saved_trap=$(trap -p INT TERM)
   if [ -t 0 ]; then stty -echo; fi
-  trap 'if [ -t 0 ]; then stty echo; echo; fi; trap - INT TERM; exit 130' INT TERM
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; exit 130' INT TERM
   read _token || _rc=$?
-  trap - INT TERM
+  eval "${_saved_trap:-trap - INT TERM}"
   if [ -t 0 ]; then stty echo; echo; fi
   [ "$_rc" -eq 0 ] || return "$_rc"
 

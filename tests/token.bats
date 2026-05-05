@@ -258,6 +258,58 @@ _jailrun_token() {
   [ "$status" -eq 0 ]
 }
 
+# ------------------------------------------------------------------------
+# Cycle v0.3.3 / Operations Phase レビュー反映
+# 呼び出し元の事前 INT/TERM trap を保持すること
+# ------------------------------------------------------------------------
+
+@test "RT2 rotate: 呼び出し元の事前 INT/TERM trap を保持する" {
+  setup_jailrun_env
+  setup_token_shims
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=registered
+  export MOCK_SEC_DELETE_STATE=ok
+  export MOCK_SEC_ADD_STATE=ok
+  run bash -c '
+    set -eu
+    export _JAILRUN_TOKEN_NODISPATCH=1
+    . "$JAILRUN_LIB/token.sh"
+    USER=jailrun-test
+    TMPIN="$BATS_TEST_TMPDIR/rt2-input"
+    printf "y\nnewtok\n" > "$TMPIN"
+    trap "echo caller_int_handler" INT
+    trap "echo caller_term_handler" TERM
+    BEFORE=$(trap -p INT TERM)
+    _cmd_rotate --name github:classic < "$TMPIN" >/dev/null
+    AFTER=$(trap -p INT TERM)
+    [ "$BEFORE" = "$AFTER" ]
+  '
+  [ "$status" -eq 0 ]
+}
+
+@test "AT2 add: 呼び出し元の事前 INT/TERM trap を保持する" {
+  setup_jailrun_env
+  setup_token_shims
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=empty
+  export MOCK_SEC_ADD_STATE=ok
+  run bash -c '
+    set -eu
+    export _JAILRUN_TOKEN_NODISPATCH=1
+    . "$JAILRUN_LIB/token.sh"
+    USER=jailrun-test
+    TMPIN="$BATS_TEST_TMPDIR/at2-input"
+    printf "newtok\n" > "$TMPIN"
+    trap "echo caller_int_handler" INT
+    trap "echo caller_term_handler" TERM
+    BEFORE=$(trap -p INT TERM)
+    _cmd_add --name github:classic < "$TMPIN" >/dev/null
+    AFTER=$(trap -p INT TERM)
+    [ "$BEFORE" = "$AFTER" ]
+  '
+  [ "$status" -eq 0 ]
+}
+
 # ========================================================================
 # _cmd_delete
 # ========================================================================
