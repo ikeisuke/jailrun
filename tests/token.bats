@@ -28,7 +28,7 @@ _jailrun_token() {
 
 @test "A1 add: Darwin success (find=empty, add=ok)" {
   # Linux failure tracked in Issue #66 (PATH shim or OS dispatch root cause)
-  if [ "$(uname)" = "Linux" ]; then skip "Linux failure tracked in #66"; fi
+  case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=empty
   export MOCK_SEC_ADD_STATE=ok
@@ -41,7 +41,7 @@ _jailrun_token() {
 
 @test "A1L add: Linux success (lookup=empty, store=ok)" {
   # Linux failure tracked in Issue #66 (PATH shim or OS dispatch root cause)
-  if [ "$(uname)" = "Linux" ]; then skip "Linux failure tracked in #66"; fi
+  case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac
   export MOCK_UNAME=Linux
   export MOCK_SECTOOL_LOOKUP_STATE=empty
   export MOCK_SECTOOL_STORE_STATE=ok
@@ -54,7 +54,7 @@ _jailrun_token() {
 
 @test "A2 add: Darwin Keychain failure (find=fail, add=fail)" {
   # Linux failure tracked in Issue #66 (PATH shim or OS dispatch root cause)
-  if [ "$(uname)" = "Linux" ]; then skip "Linux failure tracked in #66"; fi
+  case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=fail
   export MOCK_SEC_ADD_STATE=fail
@@ -107,7 +107,7 @@ _jailrun_token() {
 
 @test "R1 rotate: Darwin success (find=registered, delete=ok, add=ok)" {
   # Linux failure tracked in Issue #66 (PATH shim or OS dispatch root cause)
-  if [ "$(uname)" = "Linux" ]; then skip "Linux failure tracked in #66"; fi
+  case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   export MOCK_SEC_DELETE_STATE=ok
@@ -126,7 +126,7 @@ _jailrun_token() {
 
 @test "R1L rotate: Linux success (lookup=registered, clear=ok, store=ok)" {
   # Linux failure tracked in Issue #66 (PATH shim or OS dispatch root cause)
-  if [ "$(uname)" = "Linux" ]; then skip "Linux failure tracked in #66"; fi
+  case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac
   export MOCK_UNAME=Linux
   export MOCK_SECTOOL_LOOKUP_STATE=registered
   export MOCK_SECTOOL_CLEAR_STATE=ok
@@ -172,7 +172,7 @@ _jailrun_token() {
 
 @test "R4 rotate: non-tty normal input (guard skips stty, Keychain updated)" {
   # Linux failure tracked in Issue #66 (PATH shim or OS dispatch root cause)
-  if [ "$(uname)" = "Linux" ]; then skip "Linux failure tracked in #66"; fi
+  case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   export MOCK_SEC_DELETE_STATE=ok
@@ -208,7 +208,7 @@ _jailrun_token() {
 
 @test "R6 rotate: non-tty empty input (empty input, skipping)" {
   # Linux failure tracked in Issue #66 (PATH shim or OS dispatch root cause)
-  if [ "$(uname)" = "Linux" ]; then skip "Linux failure tracked in #66"; fi
+  case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac
   export MOCK_UNAME=Darwin
   export MOCK_SEC_FIND_STATE=registered
   # confirm に y、トークン入力に空行 (改行のみ)
