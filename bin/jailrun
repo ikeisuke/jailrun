@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # jailrun - AI agent security wrapper
 # Launch AI coding agents with credential isolation + OS sandbox
 #
