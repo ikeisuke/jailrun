@@ -1,6 +1,6 @@
 # Change History
 
-## v0.3.5 — Linux CI skip 解除と dash bashism 不整合の根本原因対処（patch リリース） (TBD)
+## v0.3.5 — Linux CI skip 解除と dash bashism 不整合の根本原因対処（patch リリース） (2026-05-07)
 
 v0.3.4 Unit 001 で暫定 skip した bats テスト 8 件（`tests/token.bats` 7 件 + `tests/jailrun.bats` 1 件）の Linux skip ガードを解除し、ubuntu-latest 失敗ログから根本原因を特定・最小修正で両 OS green を達成する patch リリース。Issue #66 を close する。
 
