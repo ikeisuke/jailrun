@@ -1,7 +1,7 @@
 # AI-DLC プロジェクト設定
 # 生成日: 2026-03-28
 
-starter_kit_version = "2.5.0"
+starter_kit_version = "2.5.1"
 
 [project]
 name = "jailrun"
@@ -154,3 +154,5 @@ milestone_enabled = false
 # サイクル振り返りのフィードバック処理モード（v2.5.0で追加）
 # 許容値: "silent" / "mirror" / "disabled"
 feedback_mode = "mirror"
+# 1サイクルあたりの最大フィードバック件数（v2.5.1で追加、デフォルト: 3）
+feedback_max_per_cycle = 3
