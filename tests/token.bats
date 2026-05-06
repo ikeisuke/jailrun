@@ -324,6 +324,61 @@ _jailrun_token() {
   [ "$status" -eq 0 ]
 }
 
+# ------------------------------------------------------------------------
+# Cycle v0.3.4 / Unit 003 / Issue #63
+# trap handler chain: kill -SIG $$ で caller の INT trap が発火すること
+# 隔離境界: bash -c 子プロセスの $$ 内で完結し bats harness には INT を届けない
+# 観測経路: マーカーファイルに caller trap が echo を書き込み、grep で assert
+# ------------------------------------------------------------------------
+
+@test "RT3 rotate: caller INT trap fires via Ctrl-C chain (kill -INT \$\$)" {
+  setup_jailrun_env
+  setup_token_shims
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=registered
+  FIFO="$BATS_TEST_TMPDIR/rt3-fifo"
+  MARKER="$BATS_TEST_TMPDIR/rt3-marker"
+  mkfifo "$FIFO"
+  export FIFO MARKER
+  run bash -c '
+    set -u
+    export _JAILRUN_TOKEN_NODISPATCH=1
+    . "$JAILRUN_LIB/token.sh"
+    USER=jailrun-test
+    trap "echo CALLER_TRAP_FIRED >> $MARKER" INT
+    ( printf "y\n"; sleep 0.5 ) > "$FIFO" &
+    ( sleep 0.3; kill -INT $$ ) &
+    _cmd_rotate --name github:classic < "$FIFO" >/dev/null 2>&1 || true
+    wait 2>/dev/null || true
+  '
+  [ -f "$MARKER" ]
+  grep -q "CALLER_TRAP_FIRED" "$MARKER"
+}
+
+@test "AT3 add: caller INT trap fires via Ctrl-C chain (kill -INT \$\$)" {
+  setup_jailrun_env
+  setup_token_shims
+  export MOCK_UNAME=Darwin
+  export MOCK_SEC_FIND_STATE=empty
+  FIFO="$BATS_TEST_TMPDIR/at3-fifo"
+  MARKER="$BATS_TEST_TMPDIR/at3-marker"
+  mkfifo "$FIFO"
+  export FIFO MARKER
+  run bash -c '
+    set -u
+    export _JAILRUN_TOKEN_NODISPATCH=1
+    . "$JAILRUN_LIB/token.sh"
+    USER=jailrun-test
+    trap "echo CALLER_TRAP_FIRED >> $MARKER" INT
+    ( sleep 0.5 ) > "$FIFO" &
+    ( sleep 0.3; kill -INT $$ ) &
+    _cmd_add --name github:classic < "$FIFO" >/dev/null 2>&1 || true
+    wait 2>/dev/null || true
+  '
+  [ -f "$MARKER" ]
+  grep -q "CALLER_TRAP_FIRED" "$MARKER"
+}
+
 # ========================================================================
 # _cmd_delete
 # ========================================================================

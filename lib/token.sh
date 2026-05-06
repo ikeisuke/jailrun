@@ -128,7 +128,8 @@ _cmd_add() {
   _rc=0
   _saved_trap=$(trap -p INT TERM)
   if [ -t 0 ]; then stty -echo; fi
-  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; exit 130' INT TERM
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; kill -INT $$' INT
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; kill -TERM $$' TERM
   read _token || _rc=$?
   eval "${_saved_trap:-trap - INT TERM}"
   if [ -t 0 ]; then stty echo; echo; fi
@@ -174,7 +175,8 @@ _cmd_rotate() {
   _rc=0
   _saved_trap=$(trap -p INT TERM)
   if [ -t 0 ]; then stty -echo; fi
-  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; exit 130' INT TERM
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; kill -INT $$' INT
+  trap 'if [ -t 0 ]; then stty echo; echo; fi; eval "${_saved_trap:-trap - INT TERM}"; kill -TERM $$' TERM
   read _token || _rc=$?
   eval "${_saved_trap:-trap - INT TERM}"
   if [ -t 0 ]; then stty echo; echo; fi
