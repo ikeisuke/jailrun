@@ -1,7 +1,7 @@
 # AI-DLC プロジェクト設定
 # 生成日: 2026-03-28
 
-starter_kit_version = "2.5.0"
+starter_kit_version = "2.5.1"
 
 [project]
 name = "jailrun"
@@ -41,7 +41,7 @@ commit_on_unit_complete = true
 commit_on_phase_complete = true
 branch_mode = "branch"
 unit_branch_enabled = false
-squash_enabled = false
+squash_enabled = true
 merge_method = "merge"
 draft_pr = "always"
 ai_author_auto_detect = true
@@ -104,21 +104,16 @@ mode = "semi_auto"
 [inception]
 # Inception Phase設定
 
-[rules.backlog]
-# バックログ管理モード設定
-# mode: "git" | "issue" | "git-only" | "issue-only"
-# - git: ローカルファイルがデフォルト、状況に応じてIssueも許容
-# - issue: GitHub Issueがデフォルト、状況に応じてローカルも許容
-# - git-only: ローカルファイルのみ（Issueへの記録を禁止）
-# - issue-only: GitHub Issueのみ（ローカルファイルへの記録を禁止）（デフォルト）
-mode = "issue-only"
+# [rules.backlog] は v2.0.3 で廃止（DEPRECATED）。バックログは GitHub Issue 固定で
+# 設定は無視されるため、本セクションは削除済み。
+# 参照: skills/aidlc/guides/backlog-management.md / scripts/resolve-backlog-mode.sh
 
 [rules.release]
 # リリース設定（v2.1.6で追加）
 # changelog: true | false - CHANGELOG自動更新（デフォルト: false）
 # version_tag: true | false - gitタグ作成（デフォルト: false）
-changelog = false
-version_tag = false
+changelog = true
+version_tag = true
 
 [rules.depth_level]
 # 成果物詳細度設定（v1.19.0で追加）
@@ -135,8 +130,9 @@ max_retry = 3
 # サイクル設定（v2.1.6で追加）
 # mode: "default"
 # git_tracked: true | false - cyclesをgit管理するか（デフォルト: true）
+# jailrun は .aidlc/cycles/ を .gitignore で除外する恒久方針（.aidlc/rules.md 参照）
 mode = "default"
-git_tracked = true
+git_tracked = false
 
 [rules.version_check]
 # バージョンチェック設定（v2.1.4でupgrade_checkからリネーム）
@@ -148,9 +144,11 @@ enabled = true
 # milestone_enabled: true | false - GitHub Milestone 自動作成 / 紐付け / close を有効にするか（既定: false）
 # - true: Inception Phase で自動作成、Operations Phase で自動 close
 # - false: Milestone 関連ステップを全てスキップ（後方互換性確保のため既定は false）
-milestone_enabled = false
+milestone_enabled = true
 
 [rules.retrospective]
 # サイクル振り返りのフィードバック処理モード（v2.5.0で追加）
 # 許容値: "silent" / "mirror" / "disabled"
 feedback_mode = "mirror"
+# 1サイクルあたりの最大フィードバック件数（v2.5.1で追加、デフォルト: 3）
+feedback_max_per_cycle = 3

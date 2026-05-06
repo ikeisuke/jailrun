@@ -14,22 +14,44 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest]
+        os: [macos-latest, ubuntu-latest]
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.x'
 
       - name: Install bats (macOS)
         if: runner.os == 'macOS'
         run: brew install bats-core
+
+      - name: Install bats (Linux)
+        if: runner.os == 'Linux'
+        env:
+          BATS_CORE_VERSION: v1.11.1
+          BATS_CORE_SHA: b640ec3cf2c7c9cfc9e6351479261186f76eeec8
+        run: |
+          git clone --depth 1 --branch "$BATS_CORE_VERSION" https://github.com/bats-core/bats-core.git /tmp/bats-core
+          cd /tmp/bats-core
+          actual_sha=$(git rev-parse HEAD)
+          if [ "$actual_sha" != "$BATS_CORE_SHA" ]; then
+            echo "::error::bats-core SHA mismatch: got $actual_sha, expected $BATS_CORE_SHA"
+            exit 1
+          fi
+          sudo ./install.sh /usr/local
+
+      - name: Verify bats version
+        run: |
+          bats --version
+          if [ "$(uname)" = "Linux" ]; then
+            bats --version | grep -F "Bats 1.11.1"
+          fi
 
       - name: Run make test
         run: make test

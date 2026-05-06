@@ -1,6 +1,20 @@
 #!/usr/bin/env bats
 
+# Cycle v0.3.4 / Unit 001 / Issue #62
+# This file targets the macOS Seatbelt sandbox backend (`lib/platform/sandbox-darwin.sh`).
+# All cases source `lib/sandbox.sh` which dispatches to Darwin-specific helpers
+# (`_setup_sandbox` / `_build_exec_script` / `_build_git_askpass`); these helpers
+# are not defined on Linux and the cases assert Seatbelt-specific output strings.
+# Skip on non-Darwin to keep the macOS coverage intact while allowing the Linux
+# matrix job to run without false negatives.
+
 load helpers
+
+setup() {
+  if [ "$(uname)" != "Darwin" ]; then
+    skip "Darwin only (Seatbelt sandbox backend)"
+  fi
+}
 
 @test "sandbox-darwin.sh generates valid Seatbelt profile" {
   setup_jailrun_env
