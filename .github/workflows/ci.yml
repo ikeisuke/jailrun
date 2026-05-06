@@ -33,16 +33,24 @@ jobs:
 
       - name: Install bats (Linux)
         if: runner.os == 'Linux'
+        env:
+          BATS_CORE_VERSION: v1.11.1
+          BATS_CORE_SHA: b640ec3cf2c7c9cfc9e6351479261186f76eeec8
         run: |
-          git clone --depth 1 --branch v1.10.1 https://github.com/bats-core/bats-core.git /tmp/bats-core
+          git clone --depth 1 --branch "$BATS_CORE_VERSION" https://github.com/bats-core/bats-core.git /tmp/bats-core
           cd /tmp/bats-core
+          actual_sha=$(git rev-parse HEAD)
+          if [ "$actual_sha" != "$BATS_CORE_SHA" ]; then
+            echo "::error::bats-core SHA mismatch: got $actual_sha, expected $BATS_CORE_SHA"
+            exit 1
+          fi
           sudo ./install.sh /usr/local
 
       - name: Verify bats version
         run: |
           bats --version
           if [ "$(uname)" = "Linux" ]; then
-            bats --version | grep -F "Bats 1.10.1"
+            bats --version | grep -F "Bats 1.11.1"
           fi
 
       - name: Run make test
