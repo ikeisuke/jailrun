@@ -112,7 +112,10 @@ mode = "semi_auto"
 # リリース設定（v2.1.6で追加）
 # changelog: true | false - CHANGELOG自動更新（デフォルト: false）
 # version_tag: true | false - gitタグ作成（デフォルト: false）
-changelog = true
+# v0.3.5: HISTORY.md と CHANGELOG.md の二重化リスク回避のため false に戻す
+# （v0.3.4 振り返り Issue #70 問題 5 / B-staged 方針）。v0.4.0 で
+# HISTORY.md → CHANGELOG.md 段階移行 Unit を計画後、再度 true 化を検討する。
+changelog = false
 version_tag = true
 
 [rules.depth_level]
