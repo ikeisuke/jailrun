@@ -1,5 +1,25 @@
 # Change History
 
+## v0.3.5 — Linux CI skip 解除と dash bashism 不整合の根本原因対処（patch リリース） (2026-05-07)
+
+v0.3.4 Unit 001 で暫定 skip した bats テスト 8 件（`tests/token.bats` 7 件 + `tests/jailrun.bats` 1 件）の Linux skip ガードを解除し、ubuntu-latest 失敗ログから根本原因を特定・最小修正で両 OS green を達成する patch リリース。Issue #66 を close する。
+
+### Changes
+
+#### Tests
+
+- **`tests/token.bats`** Linux skip ガード 7 箇所削除（A1 / A1L / A2 / R1 / R1L / R4 / R6）。`case "$OSTYPE" in linux*) skip "Linux failure tracked in #66" ;; esac` 2 行ずつを除去（Unit 001、Issue #66 Closes）
+- **`tests/jailrun.bats`** Linux skip ガード 1 箇所削除（`jailrun with no args shows help`）。`if [ "$(uname)" = "Linux" ]; then skip ...; fi` 2 行を除去
+
+#### Production
+
+- **`bin/jailrun`** shebang を `#!/bin/sh` から `#!/bin/bash` に変更（Unit 001、Self-Healing 1）。ubuntu-latest の `/bin/sh`（dash）で `shift 2>/dev/null || true` が no-args fatal shell error を起こす問題を回避（POSIX dash の `shift` は `||` で catch 不可）
+- **`lib/token.sh`** shebang を `#!/bin/sh` から `#!/bin/bash` に変更（Unit 001、Self-Healing 1）。`_cmd_add` / `_cmd_rotate` 内 `_saved_trap=$(trap -p INT TERM)` が dash で `Illegal option -p`（POSIX trap は `-p` 非対応、bash 拡張）になる問題を回避
+
+shebang を `#!/usr/bin/env bash` ではなく `#!/bin/bash`（絶対パス）にした理由: `tests/ruleset.bats` の PATH 完全 isolation（`setup_ruleset_shims` の sysbin whitelist）下で `/usr/bin/env` が解決できず exit 127 になるため。
+
+最終 CI 結果: macos-latest pass 179 / skip 0、ubuntu-latest pass 165 / skip 14 / fail 0（baseline 比 ubuntu pass +8 / skip -8）。`.aidlc/cycles/v0.3.5/findings.md` に baseline / Self-Healing 履歴 / 修正対象一覧を保存。
+
 ## v0.3.4 — Linux CI 復活 + GitHub Actions SHA pin + lib/token.sh trap chain（patch リリース） (2026-05-06)
 
 v0.3.3 サイクル振り返り（Issue #64）由来のハードニング 3 件（#62 Linux CI 復活 / #60 GitHub Actions SHA pin / #63 lib/token.sh trap chain）を一括して解消する patch リリース。あわせて main の branch protection に必須 CI チェックを登録し、v0.3.3 振り返り問題 4（PR マージ時の `error:checks-status-unknown` バイパス）を構造的に解消する。

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Token management (macOS Keychain / Linux GNOME Keyring)
 # Usage: jailrun token <subcommand> [options]
 #
