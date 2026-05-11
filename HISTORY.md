@@ -1,5 +1,13 @@
 # Change History
 
+## v0.3.6 — WSL2 AppArmor 動作対応 + 周辺整理（patch リリース） (TBD)
+
+WSL2 環境で AppArmor サンドボックスが動作しない問題（Issue #78）と `make install` のインストール漏れ（Issue #77）を解消する patch リリース。あわせて v0.3.5 Retrospective Try 2 の shebang 選択理由追記を完了する。
+
+### Changes
+
+shebang 選択理由補足: `bin/jailrun` / `lib/token.sh` の shebang は `#!/bin/bash`（絶対パス）を採用する。`#!/usr/bin/env bash` は `tests/ruleset.bats` の PATH 完全 isolation 下で `/usr/bin/env` が解決できず exit 127 となるため不採用（v0.3.5 Self-Healing 1 で確定）。
+
 ## v0.3.5 — Linux CI skip 解除と dash bashism 不整合の根本原因対処（patch リリース） (2026-05-07)
 
 v0.3.4 Unit 001 で暫定 skip した bats テスト 8 件（`tests/token.bats` 7 件 + `tests/jailrun.bats` 1 件）の Linux skip ガードを解除し、ubuntu-latest 失敗ログから根本原因を特定・最小修正で両 OS green を達成する patch リリース。Issue #66 を close する。
