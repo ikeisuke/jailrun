@@ -45,12 +45,13 @@ done
 
 _SANDBOX_ALLOW_WRITE_PATHS=""
 # Cross-platform paths: create if missing (safe to mkdir)
+# Note: ~/.kiro and ~/.local/share are intentionally NOT listed here; they are
+# moved to _SANDBOX_ALLOW_WRITE_LOCK_PATHS below because kiro-cli requires
+# the lock (k) AppArmor permission for SQLite / JSON file_lock (Issue #78).
 for _p in \
   "$HOME/.claude" \
   "$HOME/.codex" \
-  "$HOME/.kiro" \
   "$HOME/.gemini" \
-  "$HOME/.local/share" \
   "$HOME/.local/state" \
   "$HOME/.cache" \
   "$HOME/.npm" \
@@ -98,11 +99,23 @@ for _p in $SANDBOX_EXTRA_ALLOW_WRITE; do
 $_p"
 done
 
-# Lockfile paths: proper-lockfile creates <target>.lock next to the target.
-# Claude Code uses lock directories for multiple auth-related files, including
-# ~/.claude and ~/.claude.json. These paths must be writable even before the
-# lock directory exists.
+# Lock-required directories: backends emit rwk (read+write+lock) AppArmor rules
+# for these paths. The list mixes two pre-creation policies — decided per-entry
+# by the caller (see Issue #23 for the proper-lockfile rationale):
+#
+#   1. proper-lockfile `.lock` virtual directories (e.g. ~/.claude.lock,
+#      ~/.claude.json.lock): DO NOT pre-create. proper-lockfile uses mkdir
+#      to acquire the lock; a pre-created directory would look permanently
+#      held. Backends must tolerate the path being absent.
+#   2. Real directories that must exist for the CLI to function (e.g.
+#      ~/.kiro, ~/.local/share for kiro-cli SQLite/JSON file_lock):
+#      pre-create with mkdir -p is SAFE and recommended (Issue #78).
+#
+# systemd backend filters with `[ -d "$_p" ] || continue` (sandbox-linux-systemd.sh).
+# AppArmor backend emits rules unconditionally (non-existent paths are valid).
 _SANDBOX_ALLOW_WRITE_LOCK_PATHS=""
+
+# Policy 1: proper-lockfile lock paths (no pre-create)
 for _p in \
   "$HOME/.claude.lock" \
   "$HOME/.claude.json.lock"
@@ -110,6 +123,31 @@ do
   _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_SANDBOX_ALLOW_WRITE_LOCK_PATHS
 $_p"
 done
+
+# Policy 2: kiro-cli specific lock-required real directories.
+# kiro-cli uses SQLite/JSON file_lock inside these directories; the lock (k)
+# permission is required in AppArmor (Issue #78).
+# Future abstraction candidate: SANDBOX_EXTRA_LOCK_PATHS env var (recorded in
+# Construction Phase decisions.md).
+for _p in \
+  "$HOME/.kiro" \
+  "$HOME/.local/share"
+do
+  [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null || continue
+  _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_SANDBOX_ALLOW_WRITE_LOCK_PATHS
+$_p"
+done
+
+# Optional: kiro-cli log directory (only added when XDG_RUNTIME_DIR is set
+# by the user environment; falls back to no-op otherwise).
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  _p="$XDG_RUNTIME_DIR/kiro-log"
+  [ -d "$_p" ] || mkdir -p "$_p" 2>/dev/null
+  if [ -d "$_p" ]; then
+    _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_SANDBOX_ALLOW_WRITE_LOCK_PATHS
+$_p"
+  fi
+fi
 
 _SANDBOX_ALLOW_WRITE_FILES="$HOME/.claude.json"
 for _p in $SANDBOX_EXTRA_ALLOW_WRITE_FILES; do

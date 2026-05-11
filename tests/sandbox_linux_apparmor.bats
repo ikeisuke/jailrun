@@ -16,6 +16,26 @@ teardown() {
   rm -rf "$_tmpdir"
 }
 
+# Semantic assertion helpers — verify that the generated AppArmor profile
+# contains (or does not contain) a rule for <path> with <permission>.
+# The helpers encapsulate the quote-inside-glob format (e.g. "/foo/**" rwk,)
+# so individual @tests stay decoupled from the textual layout.
+#
+# Usage:
+#   assert_profile_has_rule "$_aa" "$HOME/.kiro" "rwk"
+#   assert_profile_no_rule  "$_aa" "$HOME/.something" "rwk"
+assert_profile_has_rule() {
+  local _aa="$1" _path="$2" _perm="$3"
+  local _glob="\"${_path}/**\" ${_perm},"
+  [[ "$_aa" == *"$_glob"* ]]
+}
+
+assert_profile_no_rule() {
+  local _aa="$1" _path="$2" _perm="$3"
+  local _glob="\"${_path}/**\" ${_perm},"
+  [[ "$_aa" != *"$_glob"* ]]
+}
+
 # Helper: run _setup_sandbox with AppArmor enabled, output both files
 run_setup_with_apparmor() {
   run sh -c '
@@ -79,8 +99,8 @@ get_props() {
   run_setup_with_apparmor
   [ "$status" -eq 0 ]
   _aa=$(get_apparmor)
-  [[ "$_aa" == *'deny "/home/testuser/.aws"/** r,'* ]]
-  [[ "$_aa" == *'deny "/home/testuser/.ssh"/** r,'* ]]
+  [[ "$_aa" == *'deny "/home/testuser/.aws/**" r,'* ]]
+  [[ "$_aa" == *'deny "/home/testuser/.ssh/**" r,'* ]]
 }
 
 @test "apparmor profile denies read for non-existent paths" {
@@ -89,7 +109,7 @@ get_props() {
   [ "$status" -eq 0 ]
   _aa=$(get_apparmor)
   # Unlike systemd InaccessiblePaths, AppArmor handles non-existent paths
-  [[ "$_aa" == *'deny "/nonexistent/secret/path"/** r,'* ]]
+  [[ "$_aa" == *'deny "/nonexistent/secret/path/**" r,'* ]]
 }
 
 @test "apparmor profile includes write whitelist for cwd and tmp" {
@@ -97,7 +117,7 @@ get_props() {
   [ "$status" -eq 0 ]
   _aa=$(get_apparmor)
   [[ "$_aa" == *"/tmp/** rw,"* ]]
-  [[ "$_aa" == *"/** rwk,"* ]]
+  [[ "$_aa" == *'/**" rwk,'* ]]
 }
 
 @test "apparmor profile denies D-Bus socket" {
@@ -111,7 +131,7 @@ get_props() {
   run_setup_with_apparmor
   [ "$status" -eq 0 ]
   _aa=$(get_apparmor)
-  [[ "$_aa" == *'deny "'*'/jailrun"/** w,'* ]]
+  [[ "$_aa" == *'deny "'*'/jailrun/**" w,'* ]]
 }
 
 # --- Deny-read filename patterns ---
@@ -149,7 +169,7 @@ get_props() {
   run_setup_with_apparmor
   [ "$status" -eq 0 ]
   _aa=$(get_apparmor)
-  [[ "$_aa" == *"\"$_wt_dir\"/** rwk,"* ]]
+  [[ "$_aa" == *"\"$_wt_dir/**\" rwk,"* ]]
   rm -rf "$_wt_dir"
 }
 
@@ -159,8 +179,59 @@ get_props() {
   run_setup_with_apparmor
   [ "$status" -eq 0 ]
   _aa=$(get_apparmor)
-  [[ "$_aa" == *"deny \"$_other\"/** w,"* ]]
+  [[ "$_aa" == *"deny \"$_other/**\" w,"* ]]
   rm -rf "$_other"
+}
+
+# --- New (v0.3.6 / Issue #78): lock-required directory rwk emission ---
+
+@test "apparmor profile emits rwk rule for ~/.kiro when present in LOCK_PATHS" {
+  _kiro_dir="$(mktemp -d)/kiro"
+  _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_kiro_dir"
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  assert_profile_has_rule "$_aa" "$_kiro_dir" "rwk"
+  rm -rf "$(dirname "$_kiro_dir")"
+}
+
+@test "apparmor profile emits rwk rule for ~/.local/share when present in LOCK_PATHS" {
+  _share_dir="$(mktemp -d)/local-share"
+  _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_share_dir"
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  assert_profile_has_rule "$_aa" "$_share_dir" "rwk"
+  rm -rf "$(dirname "$_share_dir")"
+}
+
+@test "apparmor profile emits rwk rule for kiro-log when XDG_RUNTIME_DIR is set" {
+  _xdg_dir="$(mktemp -d)"
+  _kiro_log="$_xdg_dir/kiro-log"
+  _SANDBOX_ALLOW_WRITE_LOCK_PATHS="$_kiro_log"
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  assert_profile_has_rule "$_aa" "$_kiro_log" "rwk"
+  rm -rf "$_xdg_dir"
+}
+
+# Regression: confirm the profile has no quote-outside-glob form
+# (e.g. `"path"/**` or `"path"/`). AppArmor 3.0.4 rejects this syntax.
+@test "apparmor profile contains no quote-outside-glob form (Issue #78 regression)" {
+  _SANDBOX_DENY_READ_PATHS="/home/testuser/.aws"
+  _SANDBOX_ALLOW_WRITE_PATHS="/home/testuser/.cache"
+  _SANDBOX_ALLOW_WRITE_LOCK_PATHS="/home/testuser/.kiro"
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  # Old format `"path"/...` (closing quote immediately followed by slash) must not appear.
+  # The grep is anchored to the boundary between quote and slash. Allow lines like
+  # `"path/" rw,` (slash inside the quote) but reject `"path"/ rw,`.
+  if printf '%s\n' "$_aa" | grep -qE '"[^"]+"/'; then
+    printf 'Found quote-outside-glob form in profile:\n%s\n' "$_aa" >&2
+    return 1
+  fi
 }
 
 # --- systemd integration (AppArmor active) ---
