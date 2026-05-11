@@ -1,6 +1,6 @@
 # Change History
 
-## v0.3.6 — WSL2 AppArmor 動作対応 + 周辺整理（patch リリース） (TBD)
+## v0.3.6 — WSL2 AppArmor 動作対応 + 周辺整理（patch リリース） (2026-05-12)
 
 WSL2 環境で AppArmor サンドボックスが動作しない問題（Issue #78）と `make install` のインストール漏れ（Issue #77）を解消する patch リリース。あわせて v0.3.5 Retrospective Try 2 の shebang 選択理由追記を完了する。
 
