@@ -89,8 +89,10 @@ _build_apparmor_profile() {
 
     for _f in $_SANDBOX_ALLOW_WRITE_FILES; do
       echo "  \"$(_apparmor_escape "$_f")\" rw,"
-      # Allow atomic write temp files (proper-lockfile pattern)
-      echo "  \"$(_apparmor_escape "$_f")\".tmp.* rw,"
+      # Allow atomic write temp files (proper-lockfile pattern).
+      # The glob suffix must stay inside the quoted string; AppArmor's lexer
+      # rejects bare '.' at INITIAL state when quotes close before the suffix.
+      echo "  \"$(_apparmor_escape "$_f").tmp.*\" rw,"
     done
 
     if [ -n "$_other_worktrees" ]; then
