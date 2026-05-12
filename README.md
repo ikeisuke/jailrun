@@ -91,6 +91,27 @@ sudo apt install libsecret-tools gnome-keyring    # Ubuntu/Debian
 jailrun token add --name github:classic
 ```
 
+#### WSL2 AppArmor primary profile setup
+
+The AppArmor-primary sandbox path requires `securityfs` to be mounted at
+`/sys/kernel/security`. WSL2 does not mount it automatically.
+
+Mount it manually (one-time per session):
+
+```bash
+sudo mount -t securityfs securityfs /sys/kernel/security
+```
+
+To persist across reboots, add an entry to `/etc/fstab`:
+
+```
+securityfs  /sys/kernel/security  securityfs  defaults  0  0
+```
+
+Out of scope: jailrun does not provide a built-in helper for mounting
+`securityfs` without root, nor an automatic mount at startup. If you want
+this to be transparent, handle it in your dotfiles or systemd user units.
+
 ## Troubleshooting
 
 ### "AWS credential export failed"

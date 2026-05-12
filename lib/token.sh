@@ -1,4 +1,6 @@
 #!/bin/bash
+# Note: shebang is /bin/bash (absolute path), not /usr/bin/env bash, because
+# tests/ruleset.bats isolates PATH and /usr/bin/env then exits 127.
 # Token management (macOS Keychain / Linux GNOME Keyring)
 # Usage: jailrun token <subcommand> [options]
 #
