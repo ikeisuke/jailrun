@@ -46,17 +46,19 @@ _build_apparmor_profile() {
       echo "  deny \"$(_apparmor_escape "$_p")/**\" r,"
     done
 
-    # Deny read: filename patterns (converted from regex to AppArmor glob)
+    # Deny credential filename patterns (read/write/create/lock/link)
+    # AppArmor mode flags: r (read), w (write; covers create/append/truncate),
+    # k (lock), l (link). x (execute) is intentionally omitted.
     if [ -n "$_SANDBOX_DENY_READ_REGEXES" ]; then
       echo ''
-      echo '  # Deny read: filename patterns'
+      echo '  # Deny credential filename patterns: read/write/create/lock/link'
       for _re in $_SANDBOX_DENY_READ_REGEXES; do
         # Input format: /<regex_escaped_name>$ (e.g. /\.env$)
         # Strip leading /, strip trailing $, remove regex escapes
         _name="${_re#/}"
         _name="${_name%?}"
         _name=$(printf '%s' "$_name" | sed 's/\\//g')
-        echo "  deny /**/${_name} r,"
+        echo "  deny /**/${_name} rwlk,"
       done
     fi
 
