@@ -23,6 +23,8 @@ setup() {
   export _tmpdir
   _shim_bin="$_tmpdir/shim-bin"
   mkdir -p "$_shim_bin"
+  _sbin_search="$_tmpdir/sbin-search"
+  mkdir -p "$_sbin_search"
 
   # The function looks for these variables; create a minimal profile file.
   printf 'stub profile\n' > "$_tmpdir/apparmor-profile"
@@ -35,6 +37,9 @@ teardown() {
 
 # Run _load_apparmor_profile in an isolated subshell, capturing exit code,
 # stdout, and stderr separately. The fake shim directory is prepended to PATH.
+# _APPARMOR_PARSER_SEARCH_DIRS is pinned to a test-controlled directory so
+# host /sbin contents don't leak into the test (Issue #78 codex P2 fix).
+# Tests that need sbin probing put a shim under "$_sbin_search/".
 _run_load() {
   _stderr_file="$_tmpdir/load-stderr"
   set +e
@@ -42,6 +47,7 @@ _run_load() {
     PATH="$_shim_bin:/usr/bin:/bin" \
     _tmpdir="$_tmpdir" \
     _WRAPPER_NAME="$_WRAPPER_NAME" \
+    _APPARMOR_PARSER_SEARCH_DIRS="$_sbin_search" \
     sh -c '
       . "'"$JAILRUN_LIB"'/platform/sandbox-linux-apparmor.sh"
       _load_apparmor_profile
@@ -130,6 +136,26 @@ esac
   [[ "$output" == *"[exit:1]"* ]]
   [[ "$stderr" == *"(reason: unavailable)"* ]]
   [[ "$stderr" == *"kernel module missing"* ]]
+}
+
+# --- sbin search fallback (Issue #78 codex P2): apparmor_parser only in /sbin ---
+
+@test "_load_apparmor_profile finds apparmor_parser via sbin search when not in caller PATH" {
+  # Place apparmor_parser only under the sbin search dir (simulating /sbin).
+  # Caller PATH excludes it, so `command -v` fails and the loop must find it.
+  cat > "$_sbin_search/apparmor_parser" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  chmod +x "$_sbin_search/apparmor_parser"
+  # sudo shim returns 0 for any args; real sudo would resolve apparmor_parser
+  # via secure_path which we don't need to model since the search-dir check
+  # alone determines whether the function classifies as "unavailable".
+  _write_shim "sudo" 'exit 0'
+  _run_load
+  # Parser found via sbin search → success path entered → load succeeds.
+  [[ "$output" == *"[exit:0]"* ]]
+  [[ "$stderr" != *"(reason: unavailable)"* ]]
 }
 
 # --- Success ---

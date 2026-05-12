@@ -127,7 +127,24 @@ _build_apparmor_profile() {
 # message; the return value (0/1) and systemd fallback path are unchanged.
 _load_apparmor_profile() {
   # Primary check (exit code): apparmor_parser presence.
-  if ! command -v apparmor_parser >/dev/null 2>&1; then
+  # apparmor_parser typically lives in /sbin or /usr/sbin which is reachable
+  # via sudo's secure_path but is often NOT in an unprivileged user's PATH.
+  # Probe caller PATH + sbin search dirs so we don't falsely classify a
+  # parser-installed system as "unavailable" (codex review P2, Issue #78).
+  # The sbin search dirs are overridable via _APPARMOR_PARSER_SEARCH_DIRS
+  # for tests (default: "/sbin /usr/sbin").
+  _aa_parser_found=0
+  if command -v apparmor_parser >/dev/null 2>&1; then
+    _aa_parser_found=1
+  else
+    for _aa_dir in ${_APPARMOR_PARSER_SEARCH_DIRS-/sbin /usr/sbin}; do
+      if [ -x "$_aa_dir/apparmor_parser" ]; then
+        _aa_parser_found=1
+        break
+      fi
+    done
+  fi
+  if [ "$_aa_parser_found" -eq 0 ]; then
     echo "[$_WRAPPER_NAME] WARN: failed to load AppArmor profile, falling back to systemd (reason: unavailable)" >&2
     _APPARMOR_PROFILE_LOADED=""
     return 1
