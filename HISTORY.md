@@ -1,5 +1,30 @@
 # Change History
 
+## v0.3.7 — AppArmor credential write/create deny 強化 + .tmp glob hotfix 正式化（patch リリース） (2026-05-12)
+
+v0.3.6 リリース後に発覚した AppArmor サンドボックスの credential ファイル（`.env` 等）への **write / create / append / symlink 経路の deny 抜け** を塞ぐ patch リリース。AppArmor mode フラグ `r`（read）/ `w`（write）/ `k`（lock）/ `l`（link）の 4 フラグすべてを必ず deny する形式に拡張し、`bats` で 4 フラグそれぞれを独立アサーションとして回帰検証可能にする。あわせて v0.3.6 直後の `.tmp.*` glob hotfix（commit `da5525a`）を正式リリースに取り込む。
+
+### Changes
+
+#### Production
+
+- **`lib/platform/sandbox-linux-apparmor.sh`**（A1）: `_build_apparmor_profile` 内の `.tmp.*` glob を quoted string 内側に保持する修正。AppArmor lexer の syntax error 回避（v0.3.6 hotfix `da5525a` の正式取り込み）。
+- **`lib/platform/sandbox-linux-apparmor.sh`**（A2 / Unit 001 / Intent M2）: `_SANDBOX_DENY_READ_REGEXES` から生成される credential deny rule の mode 部分を従来の `r,` 単独から `rwkl,`（read / write / lock / link 4 フラグ網羅）に拡張。
+
+#### Tests
+
+- **`tests/sandbox_linux_apparmor.bats`**（B1 / Unit 001 / Intent M4）: AppArmor サンドボックス起動下で credential 候補ファイル（`.env` 等）に対し `touch` / `echo >` / `echo >>` / `ln -s` のすべてが exit≠0 + ファイル状態不変で deny されること、`cat`（既存 read）も継続 deny されることを検証する新規アサーションを追加。**4 フラグ（`r`/`w`/`k`/`l`）はそれぞれ独立 assert で個別検証**。非対象ファイル（`notes.txt` 等）が従来どおり作成・追記成功することも検証（リグレッションなし）。
+
+#### Review
+
+- **Unit 002（meta-Unit / D1 / Intent M5）**: `codex review --base main` を Round 1 実施、指摘 0 件 clean で確定。`.aidlc/cycles/v0.3.7/construction/units/002-review-summary.md` 参照。
+
+### Backlog 繰越
+
+- AppArmor 以外のサンドボックスバックエンド（macOS sandbox-exec / Linux Landlock / systemd-run）の write/create deny 拡張は別サイクル。
+- credential 候補ファイル名リスト（`_SANDBOX_DENY_READ_REGEXES`）自体の拡充は別サイクル。
+- バックログ Issue（#67 / #79 等）は v0.3.8 以降で対応。
+
 ## v0.3.6 — WSL2 AppArmor 動作対応 + 周辺整理（patch リリース） (2026-05-12)
 
 WSL2 環境で AppArmor サンドボックスが動作しない問題（Issue #78）と `make install` のインストール漏れ（Issue #77）を解消する patch リリース。あわせて v0.3.5 Retrospective Try 2 の shebang 選択理由追記を完了する。

@@ -112,6 +112,15 @@ Out of scope: jailrun does not provide a built-in helper for mounting
 `securityfs` without root, nor an automatic mount at startup. If you want
 this to be transparent, handle it in your dotfiles or systemd user units.
 
+#### AppArmor credential deny coverage (v0.3.7+)
+
+Under the AppArmor primary path on Linux/WSL2, credential candidate files
+(e.g. `.env`, `.aws/credentials`) are denied for **read, write/create/append,
+lock and symlink** operations (AppArmor mode flags `r` / `w` / `k` / `l`).
+This blocks both reading existing credentials and creating or overwriting
+them from inside the sandbox. Non-credential files (e.g. `notes.txt`) keep
+working normally.
+
 ## Troubleshooting
 
 ### "AWS credential export failed"

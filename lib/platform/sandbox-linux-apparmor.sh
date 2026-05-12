@@ -46,17 +46,19 @@ _build_apparmor_profile() {
       echo "  deny \"$(_apparmor_escape "$_p")/**\" r,"
     done
 
-    # Deny read: filename patterns (converted from regex to AppArmor glob)
+    # Deny credential filename patterns (read/write/create/lock/link)
+    # AppArmor mode flags: r (read), w (write; covers create/append/truncate),
+    # k (lock), l (link). x (execute) is intentionally omitted.
     if [ -n "$_SANDBOX_DENY_READ_REGEXES" ]; then
       echo ''
-      echo '  # Deny read: filename patterns'
+      echo '  # Deny credential filename patterns: read/write/create/lock/link'
       for _re in $_SANDBOX_DENY_READ_REGEXES; do
         # Input format: /<regex_escaped_name>$ (e.g. /\.env$)
         # Strip leading /, strip trailing $, remove regex escapes
         _name="${_re#/}"
         _name="${_name%?}"
         _name=$(printf '%s' "$_name" | sed 's/\\//g')
-        echo "  deny /**/${_name} r,"
+        echo "  deny /**/${_name} rwlk,"
       done
     fi
 
@@ -89,8 +91,10 @@ _build_apparmor_profile() {
 
     for _f in $_SANDBOX_ALLOW_WRITE_FILES; do
       echo "  \"$(_apparmor_escape "$_f")\" rw,"
-      # Allow atomic write temp files (proper-lockfile pattern)
-      echo "  \"$(_apparmor_escape "$_f")\".tmp.* rw,"
+      # Allow atomic write temp files (proper-lockfile pattern).
+      # The glob suffix must stay inside the quoted string; AppArmor's lexer
+      # rejects bare '.' at INITIAL state when quotes close before the suffix.
+      echo "  \"$(_apparmor_escape "$_f").tmp.*\" rw,"
     done
 
     if [ -n "$_other_worktrees" ]; then
