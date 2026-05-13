@@ -45,12 +45,11 @@ done
 
 _SANDBOX_ALLOW_WRITE_PATHS=""
 # Cross-platform paths: create if missing (safe to mkdir)
-# Note: ~/.kiro and ~/.local/share are intentionally NOT listed here; they are
-# moved to _SANDBOX_ALLOW_WRITE_LOCK_PATHS below because kiro-cli requires
-# the lock (k) AppArmor permission for SQLite / JSON file_lock (Issue #78).
+# Note: ~/.kiro, ~/.local/share, ~/.codex are intentionally NOT listed here;
+# they are moved to _SANDBOX_ALLOW_WRITE_LOCK_PATHS below because they use
+# SQLite WAL which requires the lock (k) AppArmor permission (Issue #78).
 for _p in \
   "$HOME/.claude" \
-  "$HOME/.codex" \
   "$HOME/.gemini" \
   "$HOME/.local/state" \
   "$HOME/.cache" \
@@ -130,6 +129,7 @@ done
 # Future abstraction candidate: SANDBOX_EXTRA_LOCK_PATHS env var (recorded in
 # Construction Phase decisions.md).
 for _p in \
+  "$HOME/.codex" \
   "$HOME/.kiro" \
   "$HOME/.local/share"
 do
@@ -323,10 +323,22 @@ _start_proxy() {
   # Convert space-separated to comma-separated for proxy.py
   _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
 
+  # Detect network namespace — if agentns exists, bind to veth-host IP
+  _proxy_bind="127.0.0.1"
+  _proxy_port_arg=""
+  _NETNS=""
+  if ip netns list 2>/dev/null | grep -qw agentns; then
+    _proxy_bind="10.200.0.1"
+    _proxy_port_arg="--port 7890"
+    _NETNS="agentns"
+  fi
+
   # Start proxy, capture port from first stdout line via FIFO
   _fifo="$_tmpdir/proxy-port"
   mkfifo "$_fifo"
-  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" > "$_fifo" &
+  _proxy_log="/dev/null"
+  [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && _proxy_log="$_tmpdir/proxy.log"
+  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" --bind "$_proxy_bind" $_proxy_port_arg > "$_fifo" 2>"$_proxy_log" &
   _proxy_pid=$!
   read -r _proxy_port < "$_fifo"
   rm -f "$_fifo"
@@ -336,9 +348,10 @@ _start_proxy() {
     return
   fi
 
-  echo "[$_WRAPPER_NAME] proxy: 127.0.0.1:$_proxy_port (pid $_proxy_pid)" >&2
+  echo "[$_WRAPPER_NAME] proxy: $_proxy_bind:$_proxy_port (pid $_proxy_pid)" >&2
   _PROXY_PORT="$_proxy_port"
   _PROXY_PID="$_proxy_pid"
+  _PROXY_BIND="$_proxy_bind"
 }
 
 # ============================================================
@@ -369,11 +382,16 @@ credential_guard_sandbox_exec() {
     _proxy_script="$_tmpdir/exec-proxy.sh"
     {
       echo '#!/bin/sh'
-      printf 'export HTTPS_PROXY="http://127.0.0.1:%s"\n' "$_PROXY_PORT"
-      printf 'export HTTP_PROXY="http://127.0.0.1:%s"\n' "$_PROXY_PORT"
+      printf 'export HTTPS_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
+      printf 'export HTTP_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
       printf 'exec "%s" "$@"\n' "$_tmpdir/exec.sh"
     } > "$_proxy_script"
     chmod +x "$_proxy_script"
+    # Also append to env-systemd.sh for namespace mode
+    if [ -f "$_tmpdir/env-systemd.sh" ]; then
+      printf "export HTTPS_PROXY='http://%s:%s'\n" "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT" >> "$_tmpdir/env-systemd.sh"
+      printf "export HTTP_PROXY='http://%s:%s'\n" "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT" >> "$_tmpdir/env-systemd.sh"
+    fi
   fi
 
   if [ -n "$_sandbox_cmd" ]; then

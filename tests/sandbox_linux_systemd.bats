@@ -93,10 +93,7 @@ run_setup_sandbox() {
 @test "generates device restrictions" {
   run_setup_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"DevicePolicy=closed"* ]]
-  [[ "$output" == *"DeviceAllow=/dev/null rw"* ]]
-  [[ "$output" == *"DeviceAllow=/dev/random r"* ]]
-  [[ "$output" == *"DeviceAllow=/dev/urandom r"* ]]
+  [[ "$output" == *"PrivateDevices=yes"* ]]
 }
 
 @test "generates kernel protection properties" {

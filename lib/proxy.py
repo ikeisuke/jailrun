@@ -185,11 +185,11 @@ def handle_client(
             pass
 
 
-def run_proxy(allowed_domains: set[str], port: int = 0) -> None:
+def run_proxy(allowed_domains: set[str], port: int = 0, bind: str = "127.0.0.1") -> None:
     """Start the proxy server."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(("127.0.0.1", port))
+    server.bind((bind, port))
     server.listen(128)
 
     actual_port = server.getsockname()[1]
@@ -198,7 +198,8 @@ def run_proxy(allowed_domains: set[str], port: int = 0) -> None:
     print(actual_port, flush=True)
 
     logger.info(
-        "proxy listening on 127.0.0.1:%d, allowed: %s",
+        "proxy listening on %s:%d, allowed: %s",
+        bind,
         actual_port,
         ", ".join(sorted(allowed_domains)),
     )
@@ -231,6 +232,11 @@ def main() -> None:
         default=0,
         help="Port to listen on (0 = ephemeral)",
     )
+    parser.add_argument(
+        "--bind",
+        default="127.0.0.1",
+        help="Address to bind to (default: 127.0.0.1)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -244,7 +250,7 @@ def main() -> None:
         logger.error("no allowed domains specified")
         sys.exit(1)
 
-    run_proxy(allowed, args.port)
+    run_proxy(allowed, args.port, args.bind)
 
 
 if __name__ == "__main__":
