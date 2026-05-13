@@ -385,11 +385,6 @@ credential_guard_sandbox_exec() {
       printf 'exec "%s" "$@"\n' "$_tmpdir/exec.sh"
     } > "$_proxy_script"
     chmod +x "$_proxy_script"
-    # Also append to env-systemd.sh for namespace mode
-    if [ -f "$_tmpdir/env-systemd.sh" ]; then
-      printf "export HTTPS_PROXY='http://%s:%s'\n" "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT" >> "$_tmpdir/env-systemd.sh"
-      printf "export HTTP_PROXY='http://%s:%s'\n" "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT" >> "$_tmpdir/env-systemd.sh"
-    fi
   fi
 
   if [ -n "$_sandbox_cmd" ]; then

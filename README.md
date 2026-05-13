@@ -140,14 +140,10 @@ This is kernel-enforced and cannot be bypassed from inside the namespace.
 
 When the `agentns` namespace exists, jailrun automatically detects it and:
 - Binds the proxy to `10.200.0.1` (ephemeral port) instead of `127.0.0.1`
-- Launches the agent inside the namespace via `sudo ip netns exec`
+- Launches the agent inside the namespace via `NetworkNamespacePath`
 
 So after running the setup script, a normal `jailrun claude` will use the
-namespace automatically. To avoid sudo password prompts, add a sudoers entry:
-
-```
-%users ALL=(root) NOPASSWD: /usr/sbin/ip netns exec agentns *
-```
+namespace automatically. No sudo is required at runtime.
 
 Out of scope: jailrun does not manage the namespace lifecycle. Handle setup
 and teardown in your dotfiles or systemd units.

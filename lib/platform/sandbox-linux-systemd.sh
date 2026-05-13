@@ -46,6 +46,10 @@ _setup_sandbox() {
       echo '-p IPAddressAllow=127.0.0.0/8'
       echo '-p IPAddressAllow=::1/128'
     fi
+    # When network namespace exists, join it (kernel-enforced network isolation)
+    if [ -n "${_NETNS:-}" ]; then
+      echo "-p NetworkNamespacePath=/run/netns/$_NETNS"
+    fi
     # Filesystem
     if [ -z "${_APPARMOR_PROFILE_LOADED:-}" ]; then
       echo '-p ProtectSystem=strict'
@@ -164,28 +168,16 @@ _setup_sandbox() {
 # Generate systemd EnvironmentFile from env-spec
 _build_systemd_envfile() {
   local _envfile="$_tmpdir/env-systemd"
-  local _envfile_sh="$_tmpdir/env-systemd.sh"
   while IFS= read -r _line; do
     case "$_line" in
       SET\ *) printf '%s\n' "${_line#SET }" ;;
     esac
   done < "$_tmpdir/env-spec" > "$_envfile"
-  # Shell-compatible version with quoted values (for namespace mode)
-  while IFS='=' read -r _key _val; do
-    [ -n "$_key" ] && printf "export %s='%s'\n" "$_key" "$(printf '%s' "$_val" | sed "s/'/'\\\\''/g")"
-  done < "$_envfile" > "$_envfile_sh"
 }
 
 # Write sandbox exec command to stdout (appended to exec.sh)
 _build_sandbox_exec() {
   _build_systemd_envfile
-
-  # When network namespace is active, wrap with ip netns exec
-  if [ -n "${_NETNS:-}" ]; then
-    printf 'exec sudo ip netns exec %s sudo -u "%s" \\\n' "$_NETNS" "$(id -un)"
-    printf '  sh -c '\''. "%s/env-systemd.sh"; printf "\\033]0;jailrun %%s\\007" "${1##*/}"; exec "$@"'\'' _ "$@"\n' "$_tmpdir"
-    return
-  fi
 
   # --pty allocates a new PTY, so set OSC title from inside the PTY
   printf 'exec systemd-run \\\n'
