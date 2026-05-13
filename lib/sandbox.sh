@@ -316,6 +316,24 @@ if ip netns list 2>/dev/null | grep -qw agentns; then
   _NETNS="agentns"
 fi
 
+# Fail-fast guard: NetworkNamespacePath requires systemd >= 243.
+# Older systemd silently drops the property and the agent would run in the
+# host namespace while the proxy is bound to 10.200.0.1 — a fail-open of the
+# network restriction. Refuse to start instead of pretending to be isolated.
+if [ -n "$_NETNS" ] && command -v systemd-run >/dev/null 2>&1; then
+  _sd_ver=$(systemd-run --version 2>/dev/null | awk 'NR==1 {print $2}')
+  case "$_sd_ver" in
+    ''|*[!0-9]*) : ;;
+    *)
+      if [ "$_sd_ver" -lt 243 ]; then
+        echo "[$_WRAPPER_NAME] error: agentns requires systemd >= 243 for NetworkNamespacePath (current: $_sd_ver)" >&2
+        echo "[$_WRAPPER_NAME] error: older systemd silently ignores it, which would fail-open the network restriction" >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
+
 _start_proxy() {
   # Read proxy config from TOML (already eval'd into shell vars)
   if [ "${PROXY_ENABLED:-false}" != "true" ] && [ "${PROXY_ENABLED:-false}" != "1" ]; then
