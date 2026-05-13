@@ -4,7 +4,7 @@
 # Idempotent — safe to run multiple times.
 #
 # Creates a network namespace "agentns" with a veth pair so that
-# processes inside can only reach the proxy at 10.200.0.1:7890.
+# processes inside can only reach the proxy at 10.200.0.1.
 
 set -euo pipefail
 
@@ -19,7 +19,6 @@ VETH_AGENT="veth-agent"
 HOST_IP="10.200.0.1"
 AGENT_IP="10.200.0.2"
 CIDR="24"
-PROXY_PORT="7890"
 
 # --- Namespace ---
 if ip netns list | grep -qw "$NS"; then
@@ -54,6 +53,6 @@ ip netns exec "$NS" ip route replace default via "$HOST_IP"
 ip netns exec "$NS" iptables -P OUTPUT DROP
 ip netns exec "$NS" iptables -F OUTPUT
 ip netns exec "$NS" iptables -A OUTPUT -o lo -j ACCEPT
-ip netns exec "$NS" iptables -A OUTPUT -p tcp -d "$HOST_IP" --dport "$PROXY_PORT" -j ACCEPT
+ip netns exec "$NS" iptables -A OUTPUT -p tcp -d "$HOST_IP" -j ACCEPT
 
-echo "[done] namespace '$NS' ready — proxy expected at $HOST_IP:$PROXY_PORT"
+echo "[done] namespace '$NS' ready — proxy binds to $HOST_IP (any port)"

@@ -325,11 +325,9 @@ _start_proxy() {
 
   # Detect network namespace — if agentns exists, bind to veth-host IP
   _proxy_bind="127.0.0.1"
-  _proxy_port_arg=""
   _NETNS=""
   if ip netns list 2>/dev/null | grep -qw agentns; then
     _proxy_bind="10.200.0.1"
-    _proxy_port_arg="--port 7890"
     _NETNS="agentns"
   fi
 
@@ -338,7 +336,7 @@ _start_proxy() {
   mkfifo "$_fifo"
   _proxy_log="/dev/null"
   [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && _proxy_log="$_tmpdir/proxy.log"
-  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" --bind "$_proxy_bind" $_proxy_port_arg > "$_fifo" 2>"$_proxy_log" &
+  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" --bind "$_proxy_bind" > "$_fifo" 2>"$_proxy_log" &
   _proxy_pid=$!
   read -r _proxy_port < "$_fifo"
   rm -f "$_fifo"

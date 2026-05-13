@@ -136,21 +136,10 @@ agent can only reach the proxy:
 sudo scripts/wsl2-netns-setup.sh
 ```
 
-Then run the proxy on `10.200.0.1:7890` (host namespace) and launch the
-agent inside the namespace:
-
-```bash
-sudo ip netns exec agentns sudo -u "$USER" env \
-  HTTPS_PROXY=http://10.200.0.1:7890 \
-  HTTP_PROXY=http://10.200.0.1:7890 \
-  NO_PROXY=localhost,127.0.0.1 \
-  jailrun claude
-```
-
 This is kernel-enforced and cannot be bypassed from inside the namespace.
 
 When the `agentns` namespace exists, jailrun automatically detects it and:
-- Binds the proxy to `10.200.0.1:7890` instead of `127.0.0.1`
+- Binds the proxy to `10.200.0.1` (ephemeral port) instead of `127.0.0.1`
 - Launches the agent inside the namespace via `sudo ip netns exec`
 
 So after running the setup script, a normal `jailrun claude` will use the
