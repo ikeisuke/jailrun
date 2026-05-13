@@ -310,6 +310,12 @@ _build_exec_script() {
 # Section 5: Proxy management
 # ============================================================
 
+# Detect network namespace early (before _setup_sandbox generates systemd-props)
+_NETNS=""
+if ip netns list 2>/dev/null | grep -qw agentns; then
+  _NETNS="agentns"
+fi
+
 _start_proxy() {
   # Read proxy config from TOML (already eval'd into shell vars)
   if [ "${PROXY_ENABLED:-false}" != "true" ] && [ "${PROXY_ENABLED:-false}" != "1" ]; then
@@ -323,12 +329,10 @@ _start_proxy() {
   # Convert space-separated to comma-separated for proxy.py
   _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
 
-  # Detect network namespace — if agentns exists, bind to veth-host IP
+  # Bind to veth-host IP when network namespace is active
   _proxy_bind="127.0.0.1"
-  _NETNS=""
-  if ip netns list 2>/dev/null | grep -qw agentns; then
+  if [ -n "$_NETNS" ]; then
     _proxy_bind="10.200.0.1"
-    _NETNS="agentns"
   fi
 
   # Start proxy, capture port from first stdout line via FIFO
