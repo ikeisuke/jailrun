@@ -45,12 +45,11 @@ done
 
 _SANDBOX_ALLOW_WRITE_PATHS=""
 # Cross-platform paths: create if missing (safe to mkdir)
-# Note: ~/.kiro and ~/.local/share are intentionally NOT listed here; they are
-# moved to _SANDBOX_ALLOW_WRITE_LOCK_PATHS below because kiro-cli requires
-# the lock (k) AppArmor permission for SQLite / JSON file_lock (Issue #78).
+# Note: ~/.kiro, ~/.local/share, ~/.codex are intentionally NOT listed here;
+# they are moved to _SANDBOX_ALLOW_WRITE_LOCK_PATHS below because they use
+# SQLite WAL which requires the lock (k) AppArmor permission (Issue #78).
 for _p in \
   "$HOME/.claude" \
-  "$HOME/.codex" \
   "$HOME/.gemini" \
   "$HOME/.local/state" \
   "$HOME/.cache" \
@@ -130,6 +129,7 @@ done
 # Future abstraction candidate: SANDBOX_EXTRA_LOCK_PATHS env var (recorded in
 # Construction Phase decisions.md).
 for _p in \
+  "$HOME/.codex" \
   "$HOME/.kiro" \
   "$HOME/.local/share"
 do
@@ -310,6 +310,30 @@ _build_exec_script() {
 # Section 5: Proxy management
 # ============================================================
 
+# Detect network namespace early (before _setup_sandbox generates systemd-props)
+_NETNS=""
+if ip netns list 2>/dev/null | grep -qw agentns; then
+  _NETNS="agentns"
+fi
+
+# Fail-fast guard: NetworkNamespacePath requires systemd >= 243.
+# Older systemd silently drops the property and the agent would run in the
+# host namespace while the proxy is bound to 10.200.0.1 — a fail-open of the
+# network restriction. Refuse to start instead of pretending to be isolated.
+if [ -n "$_NETNS" ] && command -v systemd-run >/dev/null 2>&1; then
+  _sd_ver=$(systemd-run --version 2>/dev/null | awk 'NR==1 {print $2}')
+  case "$_sd_ver" in
+    ''|*[!0-9]*) : ;;
+    *)
+      if [ "$_sd_ver" -lt 243 ]; then
+        echo "[$_WRAPPER_NAME] error: agentns requires systemd >= 243 for NetworkNamespacePath (current: $_sd_ver)" >&2
+        echo "[$_WRAPPER_NAME] error: older systemd silently ignores it, which would fail-open the network restriction" >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
+
 _start_proxy() {
   # Read proxy config from TOML (already eval'd into shell vars)
   if [ "${PROXY_ENABLED:-false}" != "true" ] && [ "${PROXY_ENABLED:-false}" != "1" ]; then
@@ -323,10 +347,18 @@ _start_proxy() {
   # Convert space-separated to comma-separated for proxy.py
   _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
 
+  # Bind to veth-host IP when network namespace is active
+  _proxy_bind="127.0.0.1"
+  if [ -n "$_NETNS" ]; then
+    _proxy_bind="10.200.0.1"
+  fi
+
   # Start proxy, capture port from first stdout line via FIFO
   _fifo="$_tmpdir/proxy-port"
   mkfifo "$_fifo"
-  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" > "$_fifo" &
+  _proxy_log="/dev/null"
+  [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && _proxy_log="$_tmpdir/proxy.log"
+  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" --bind "$_proxy_bind" > "$_fifo" 2>"$_proxy_log" &
   _proxy_pid=$!
   read -r _proxy_port < "$_fifo"
   rm -f "$_fifo"
@@ -336,9 +368,10 @@ _start_proxy() {
     return
   fi
 
-  echo "[$_WRAPPER_NAME] proxy: 127.0.0.1:$_proxy_port (pid $_proxy_pid)" >&2
+  echo "[$_WRAPPER_NAME] proxy: $_proxy_bind:$_proxy_port (pid $_proxy_pid)" >&2
   _PROXY_PORT="$_proxy_port"
   _PROXY_PID="$_proxy_pid"
+  _PROXY_BIND="$_proxy_bind"
 }
 
 # ============================================================
@@ -369,8 +402,8 @@ credential_guard_sandbox_exec() {
     _proxy_script="$_tmpdir/exec-proxy.sh"
     {
       echo '#!/bin/sh'
-      printf 'export HTTPS_PROXY="http://127.0.0.1:%s"\n' "$_PROXY_PORT"
-      printf 'export HTTP_PROXY="http://127.0.0.1:%s"\n' "$_PROXY_PORT"
+      printf 'export HTTPS_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
+      printf 'export HTTP_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
       printf 'exec "%s" "$@"\n' "$_tmpdir/exec.sh"
     } > "$_proxy_script"
     chmod +x "$_proxy_script"

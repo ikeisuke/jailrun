@@ -121,6 +121,33 @@ This blocks both reading existing credentials and creating or overwriting
 them from inside the sandbox. Non-credential files (e.g. `notes.txt`) keep
 working normally.
 
+#### WSL2 network restriction (proxy + network namespace)
+
+On WSL2, systemd's `IPAddressDeny`/`IPAddressAllow` properties are silently
+ignored because cgroup BPF-based IP filtering does not work under the WSL2
+systemd integration. The proxy starts and `HTTPS_PROXY` is set, but the
+agent can bypass it by connecting directly.
+
+To enforce network restriction on WSL2, use a **network namespace** so the
+agent can only reach the proxy:
+
+```bash
+# One-time setup (requires sudo, idempotent)
+sudo scripts/wsl2-netns-setup.sh
+```
+
+This is kernel-enforced and cannot be bypassed from inside the namespace.
+
+When the `agentns` namespace exists, jailrun automatically detects it and:
+- Binds the proxy to `10.200.0.1` (ephemeral port) instead of `127.0.0.1`
+- Launches the agent inside the namespace via `NetworkNamespacePath`
+
+So after running the setup script, a normal `jailrun claude` will use the
+namespace automatically. No sudo is required at runtime.
+
+Out of scope: jailrun does not manage the namespace lifecycle. Handle setup
+and teardown in your dotfiles or systemd units.
+
 ## Troubleshooting
 
 ### "AWS credential export failed"

@@ -27,12 +27,10 @@ _setup_sandbox() {
     echo '-p AmbientCapabilities='
     echo '-p RestrictSUIDSGID=yes'
     echo '-p LockPersonality=yes'
-    # Device restrictions
-    echo '-p PrivateDevices=no'
-    echo '-p DevicePolicy=closed'
-    echo '-p DeviceAllow=/dev/null rw'
-    echo '-p DeviceAllow=/dev/random r'
-    echo '-p DeviceAllow=/dev/urandom r'
+    # Device restrictions — PrivateDevices=yes creates a minimal /dev with
+    # properly mounted devpts (ptmxmode=666), allowing PTY allocation for
+    # child processes (e.g. lefthook → biome).
+    echo '-p PrivateDevices=yes'
     # Process and IPC isolation
     echo '-p PrivateUsers=yes'
     echo '-p PrivateMounts=yes'
@@ -47,6 +45,10 @@ _setup_sandbox() {
       echo '-p IPAddressDeny=any'
       echo '-p IPAddressAllow=127.0.0.0/8'
       echo '-p IPAddressAllow=::1/128'
+    fi
+    # When network namespace exists, join it (kernel-enforced network isolation)
+    if [ -n "${_NETNS:-}" ]; then
+      echo "-p NetworkNamespacePath=/run/netns/$_NETNS"
     fi
     # Filesystem
     if [ -z "${_APPARMOR_PROFILE_LOADED:-}" ]; then
@@ -176,6 +178,7 @@ _build_systemd_envfile() {
 # Write sandbox exec command to stdout (appended to exec.sh)
 _build_sandbox_exec() {
   _build_systemd_envfile
+
   # --pty allocates a new PTY, so set OSC title from inside the PTY
   printf 'exec systemd-run \\\n'
   printf '  --user --pty --wait --collect --same-dir \\\n'

@@ -55,6 +55,33 @@ LIST_KEYS = {
 
 KNOWN_KEYS = set(DEFAULTS.keys())
 
+# Built-in proxy allow domains per agent (merged when proxy is enabled)
+BUILTIN_PROXY_DOMAINS: dict[str, list[str]] = {
+    "claude": [
+        "api.anthropic.com",
+        "statsig.anthropic.com",
+    ],
+    "codex": [
+        "chatgpt.com",
+        "ab.chatgpt.com",
+        "api.openai.com",
+    ],
+    "kiro-cli": [
+        "*.kiro.dev",
+        "q.us-east-1.amazonaws.com",
+        "q.eu-central-1.amazonaws.com",
+        "desktop-release.q.us-east-1.amazonaws.com",
+        "cognito-identity.us-east-1.amazonaws.com",
+        "oidc.ap-northeast-1.amazonaws.com",
+        "client-telemetry.us-east-1.amazonaws.com",
+    ],
+}
+BUILTIN_PROXY_DOMAINS_COMMON: list[str] = [
+    "github.com",
+    "api.github.com",
+    "raw.githubusercontent.com",
+]
+
 DEFAULT_TOML = """\
 # jailrun config (TOML format)
 # Docs: https://github.com/ikeisuke/jailrun
@@ -213,6 +240,17 @@ def resolve_config(app: str = "", directory: str = "") -> dict:
             f'Invalid keychain_profile: "{kp}". '
             f"Must be one of: {', '.join(sorted(VALID_KEYCHAIN_PROFILES))}"
         )
+
+    # Merge built-in proxy domains (common + per-agent)
+    if result.get("proxy_enabled"):
+        builtin = list(BUILTIN_PROXY_DOMAINS_COMMON)
+        if app and app in BUILTIN_PROXY_DOMAINS:
+            builtin.extend(BUILTIN_PROXY_DOMAINS[app])
+        existing = set(result.get("proxy_allow_domains", []))
+        for d in builtin:
+            if d not in existing:
+                result.setdefault("proxy_allow_domains", []).append(d)
+                existing.add(d)
 
     return result
 
