@@ -310,10 +310,21 @@ _build_exec_script() {
 # Section 5: Proxy management
 # ============================================================
 
+# Load network namespace topology constants (single source of truth)
+if [ ! -f "$JAILRUN_LIB/netns-const.sh" ]; then
+  echo "[$_WRAPPER_NAME] error: netns constants not found: \$JAILRUN_LIB/netns-const.sh" >&2
+  exit 1
+fi
+. "$JAILRUN_LIB/netns-const.sh"
+if [ -z "${JAILRUN_NETNS_NAME:-}" ] || [ -z "${JAILRUN_NETNS_HOST_IP:-}" ]; then
+  echo "[$_WRAPPER_NAME] error: netns constants incomplete in \$JAILRUN_LIB/netns-const.sh" >&2
+  exit 1
+fi
+
 # Detect network namespace early (before _setup_sandbox generates systemd-props)
 _NETNS=""
-if ip netns list 2>/dev/null | grep -qw agentns; then
-  _NETNS="agentns"
+if ip netns list 2>/dev/null | grep -qw "$JAILRUN_NETNS_NAME"; then
+  _NETNS="$JAILRUN_NETNS_NAME"
 fi
 
 # Fail-fast guard: NetworkNamespacePath requires systemd >= 243.
@@ -350,7 +361,7 @@ _start_proxy() {
   # Bind to veth-host IP when network namespace is active
   _proxy_bind="127.0.0.1"
   if [ -n "$_NETNS" ]; then
-    _proxy_bind="10.200.0.1"
+    _proxy_bind="$JAILRUN_NETNS_HOST_IP"
   fi
 
   # Start proxy, capture port from first stdout line via FIFO

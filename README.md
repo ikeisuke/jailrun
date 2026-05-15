@@ -145,8 +145,17 @@ When the `agentns` namespace exists, jailrun automatically detects it and:
 So after running the setup script, a normal `jailrun claude` will use the
 namespace automatically. No sudo is required at runtime.
 
-Out of scope: jailrun does not manage the namespace lifecycle. Handle setup
-and teardown in your dotfiles or systemd units.
+To remove the namespace, run the teardown script (also idempotent — safe
+to run when nothing exists or after a partially failed setup):
+
+```bash
+sudo scripts/wsl2-netns-teardown.sh
+```
+
+Out of scope: jailrun does not manage the namespace lifecycle automatically
+(it does not run setup or teardown for you). Wire `scripts/wsl2-netns-setup.sh`
+and `scripts/wsl2-netns-teardown.sh` into your dotfiles or systemd units as
+needed.
 
 ## Troubleshooting
 
