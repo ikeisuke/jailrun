@@ -157,6 +157,33 @@ Out of scope: jailrun does not manage the namespace lifecycle automatically
 and `scripts/wsl2-netns-teardown.sh` into your dotfiles or systemd units as
 needed.
 
+#### Built-in proxy allow domains
+
+When the proxy is enabled, jailrun merges three lists into the agent's
+`proxy_allow_domains` and de-duplicates the result:
+
+1. `BUILTIN_PROXY_DOMAINS_COMMON` (`lib/config.py`) — endpoints every agent
+   needs (currently the GitHub family: `github.com`, `api.github.com`,
+   `raw.githubusercontent.com`).
+2. `BUILTIN_PROXY_DOMAINS[<agent>]` (`lib/config.py`) — agent-specific API
+   and authentication endpoints. Defined for `claude`, `codex`, `kiro-cli`
+   and `gemini`.
+3. Your own `proxy_allow_domains` from `~/.config/jailrun/config.toml`
+   (or `$XDG_CONFIG_HOME/jailrun/config.toml` when `XDG_CONFIG_HOME` is set).
+
+So you can extend the allowlist without editing `lib/config.py` — just add
+domains to your config file. Built-ins remain in effect; when a built-in
+domain is already present in your `proxy_allow_domains`, the merger skips
+re-adding it (so the resulting list contains each built-in domain at most
+once, even if you also listed it). Duplicates inside your own
+`proxy_allow_domains` are not deduplicated by the merger — keep your config
+list clean if that matters to you.
+
+The `gemini` entries shipped today are a provisional minimum (auth + Gemini
+API categories). Verify against your actual `gemini` CLI traffic by enabling
+the proxy and inspecting `$_tmpdir/proxy.log` (announced on stderr at
+proxy start), then file an issue if domains are missing.
+
 ## Troubleshooting
 
 ### "AWS credential export failed"
