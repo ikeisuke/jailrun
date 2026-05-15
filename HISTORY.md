@@ -1,5 +1,46 @@
 # Change History
 
+## v0.4.0 — WSL2 netns 安全性強化 + proxy エラーハンドリング堅牢化 + allow domains 整理（minor リリース） (2026-05-15)
+
+v0.3.7 で main にマージ済みの WSL2 network namespace 機能（`agentns` モード）について、運用ライフサイクル・proxy 起動失敗時のリーク・allow domains の設定方式不整合を解消する minor リリース。`agentns` 削除手順を公式化し、起動失敗時の proxy リーク（PID 取り残し / TCP ポートホールド）を構造的に塞ぎ、`BUILTIN_PROXY_DOMAINS` を agent 別の単一テーブルに整理した。
+
+### Changes
+
+#### Production
+
+- **`scripts/wsl2-netns-teardown.sh`**（Unit 001 / Issue #84 ストーリー1 / 新規）: `agentns` namespace と `veth-host` link を冪等に削除するスクリプトを新規追加。root チェック、namespace / link 未作成時の no-op、中途失敗状態（片側のみ残骸）でも非ゼロ終了しない構造で、setup と対称に運用ライフサイクルを完結させる。
+- **`scripts/wsl2-netns-setup.sh`**（Unit 001 / ストーリー2）: namespace 内 iptables の INPUT 方向に最小権限ルールを追加（policy DROP + ESTABLISHED,RELATED + lo 許可）。host → agent への無関係な直接接続を拒否し、proxy 応答パスのみ通過する設計に揃えた。
+- **`lib/netns-const.sh`**（Unit 001 / ストーリー3 / 新規）: `HOST_IP=10.200.0.1` を含む netns 関連定数の単一真実源（SoT）を新設。`scripts/wsl2-netns-setup.sh` と `lib/sandbox.sh`（proxy bind 先）の双方が同ファイルを参照し、片側変更による不整合を構造的に防止。
+- **`lib/sandbox.sh`**（Unit 002 / Issue #83）: `agentns` モードの proxy 起動シーケンスに readiness 検証と失敗パス cleanup を導入。`(H1)` proxy プロセス起動後に listen 開始を待たずに agent 起動していた競合を解消し、`(H2)` proxy 起動失敗時に PID / TCP ポートが取り残されていた問題を解消。trap / wait の組み合わせで失敗パスを必ず通る構造に変更。
+- **`lib/config.py`**（Unit 003 / Issue #85）: agent 別の組み込み allow domains を `BUILTIN_PROXY_DOMAINS` の単一辞書として再構成。`gemini` agent を新規エントリとして追加。既存 agent（`claude` / `copilot` 等）の挙動はユニットテストで互換確認済み。
+
+#### Tests
+
+- **`tests/wsl2_netns.bats`**（Unit 001 / 新規 / 227 行）: teardown 冪等性（未作成・部分残骸状態）、INPUT ルールの ESTABLISHED,RELATED 通過確認、host IP SoT 経由のルックアップ整合を検証。
+- **`tests/proxy_readiness.bats`**（Unit 002 / 新規 / 288 行）: proxy 起動失敗時に PID / ポートが残らないこと、readiness 待機タイムアウトのエラーパス、正常起動時の agent 起動順序を網羅。
+- **`tests/test_config.py`**（Unit 003 / 新規 / 158 行）: 各 agent の `BUILTIN_PROXY_DOMAINS` 期待値、未知 agent 時のフォールバック、`gemini` 新規エントリの allow list を検証。
+- **`tests/sandbox_kiro_lock_paths.bats`**（Unit 001 / 既存）: netns SoT 参照に伴う lock パスの調整。
+
+#### Documentation
+
+- **`README.md`**（Unit 001 / Unit 003）: teardown スクリプトの使い方（root 必須、冪等な削除）、host IP SoT の参照経路、`BUILTIN_PROXY_DOMAINS` の整理結果と gemini 追加の運用上の注意を追記。
+
+#### Build
+
+- **`Makefile`**（Unit 001）: `wsl2-netns-teardown.sh` のインストール対象追加。
+
+### Review
+
+- **Unit 001**: `codex review --base main` Round 1-2 実施。netns OUTPUT が host IP 全 TCP ポートに開いている指摘は v0.4.0 スコープ外 として #86 へ defer（type:security / medium）。veth-host 存在チェックがトポロジー未検証で冪等性が崩れる指摘は #87 へ defer（type:bugfix / low）。
+- **Unit 002**: `codex review --base main` Round 1 実施。H1/H2 リーク経路の修正範囲・テストカバレッジともに clean。
+- **Unit 003**: `codex review --base main` Round 1 実施、指摘 0 件 clean で確定。
+
+### Backlog 繰越
+
+- **#86**（次サイクル候補 / type:security / medium）: netns OUTPUT ルールが host IP の全 TCP ポート到達を許可（proxy ポート限定でない）
+- **#87**（次サイクル候補 / type:bugfix / low）: `wsl2-netns-setup.sh` の veth-host 存在チェックがトポロジー未検証で部分失敗時に冪等性が崩れる
+- **#67**（既存 / type:bugfix / high）: `jailrun copilot --resume` が起動できない（要調査、v0.4.x 系候補）
+
 ## v0.3.7 — AppArmor credential write/create deny 強化 + .tmp glob hotfix 正式化（patch リリース） (2026-05-12)
 
 v0.3.6 リリース後に発覚した AppArmor サンドボックスの credential ファイル（`.env` 等）への **write / create / append / symlink 経路の deny 抜け** を塞ぐ patch リリース。AppArmor mode フラグ `r`（read）/ `w`（write）/ `k`（lock）/ `l`（link）の 4 フラグすべてを必ず deny する形式に拡張し、`bats` で 4 フラグそれぞれを独立アサーションとして回帰検証可能にする。あわせて v0.3.6 直後の `.tmp.*` glob hotfix（commit `da5525a`）を正式リリースに取り込む。

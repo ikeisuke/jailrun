@@ -310,10 +310,21 @@ _build_exec_script() {
 # Section 5: Proxy management
 # ============================================================
 
+# Load network namespace topology constants (single source of truth)
+if [ ! -f "$JAILRUN_LIB/netns-const.sh" ]; then
+  echo "[$_WRAPPER_NAME] error: netns constants not found: \$JAILRUN_LIB/netns-const.sh" >&2
+  exit 1
+fi
+. "$JAILRUN_LIB/netns-const.sh"
+if [ -z "${JAILRUN_NETNS_NAME:-}" ] || [ -z "${JAILRUN_NETNS_HOST_IP:-}" ]; then
+  echo "[$_WRAPPER_NAME] error: netns constants incomplete in \$JAILRUN_LIB/netns-const.sh" >&2
+  exit 1
+fi
+
 # Detect network namespace early (before _setup_sandbox generates systemd-props)
 _NETNS=""
-if ip netns list 2>/dev/null | grep -qw agentns; then
-  _NETNS="agentns"
+if ip netns list 2>/dev/null | grep -qw "$JAILRUN_NETNS_NAME"; then
+  _NETNS="$JAILRUN_NETNS_NAME"
 fi
 
 # Fail-fast guard: NetworkNamespacePath requires systemd >= 243.
@@ -334,15 +345,58 @@ if [ -n "$_NETNS" ] && command -v systemd-run >/dev/null 2>&1; then
   esac
 fi
 
+# Single decision point: should _start_proxy actually launch the proxy?
+# Both the readiness gate below and _start_proxy consult this so the
+# "is the proxy going to bind?" question has one answer per invocation.
+_proxy_should_start() {
+  case "${PROXY_ENABLED:-false}" in
+    true|1) ;;
+    *) return 1 ;;
+  esac
+  [ -n "${PROXY_ALLOW_DOMAINS:-}" ]
+}
+
+# Verify host-side resources required for the proxy bind. Returns 1 on
+# failure (with a stderr message naming the missing resource and a hint);
+# the top-level launch block decides whether to exit. Keeping `exit` out
+# of this function makes it unit-testable from bats without killing the
+# test runner.
+_verify_proxy_readiness() {
+  if ! ip link show "$JAILRUN_NETNS_VETH_HOST" >/dev/null 2>&1; then
+    echo "[$_WRAPPER_NAME] error: agentns detected but host veth '$JAILRUN_NETNS_VETH_HOST' is missing" >&2
+    echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to (re)create the namespace, or remove agentns to disable netns" >&2
+    return 1
+  fi
+  # Use fixed-string match against the exact CIDR-delimited form ("inet
+  # 10.200.0.1/24") so the IP literal is not interpreted as a regex (a `.`
+  # would otherwise match any character and weaken the fail-closed check).
+  if ! ip -o -4 addr show dev "$JAILRUN_NETNS_VETH_HOST" 2>/dev/null \
+    | grep -Fq " $JAILRUN_NETNS_HOST_IP/"; then
+    echo "[$_WRAPPER_NAME] error: agentns detected but host IP '$JAILRUN_NETNS_HOST_IP' is not assigned to '$JAILRUN_NETNS_VETH_HOST'" >&2
+    echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to (re)create the namespace, or remove agentns to disable netns" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Readiness launch block (sub A): only fires when the namespace is active
+# AND the proxy will actually bind. Fail-closed: no loopback fallback.
+if [ -n "$_NETNS" ] && _proxy_should_start; then
+  _verify_proxy_readiness || exit 1
+fi
+
 _start_proxy() {
-  # Read proxy config from TOML (already eval'd into shell vars)
-  if [ "${PROXY_ENABLED:-false}" != "true" ] && [ "${PROXY_ENABLED:-false}" != "1" ]; then
-    return
-  fi
-  if [ -z "${PROXY_ALLOW_DOMAINS:-}" ]; then
-    echo "[$_WRAPPER_NAME] WARN: proxy enabled but no proxy_allow_domains configured, skipping" >&2
-    return
-  fi
+  # Read proxy config from TOML (already eval'd into shell vars).
+  # Surface the "enabled but no domains" misconfiguration before consulting
+  # _proxy_should_start so users still see the WARN that used to live here.
+  case "${PROXY_ENABLED:-false}" in
+    true|1)
+      if [ -z "${PROXY_ALLOW_DOMAINS:-}" ]; then
+        echo "[$_WRAPPER_NAME] WARN: proxy enabled but no proxy_allow_domains configured, skipping" >&2
+      fi
+      ;;
+  esac
+  _proxy_should_start || return
 
   # Convert space-separated to comma-separated for proxy.py
   _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
@@ -350,16 +404,19 @@ _start_proxy() {
   # Bind to veth-host IP when network namespace is active
   _proxy_bind="127.0.0.1"
   if [ -n "$_NETNS" ]; then
-    _proxy_bind="10.200.0.1"
+    _proxy_bind="$JAILRUN_NETNS_HOST_IP"
   fi
 
-  # Start proxy, capture port from first stdout line via FIFO
+  # Start proxy, capture port from first stdout line via FIFO.
+  # Always persist proxy stderr so bind/DNS/CONNECT errors are visible
+  # even without AGENT_SANDBOX_DEBUG=1; announce the path on launch so
+  # users can find it whether or not the proxy starts successfully.
   _fifo="$_tmpdir/proxy-port"
   mkfifo "$_fifo"
-  _proxy_log="/dev/null"
-  [ "${AGENT_SANDBOX_DEBUG:-}" = "1" ] && _proxy_log="$_tmpdir/proxy.log"
+  _proxy_log="$_tmpdir/proxy.log"
   python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" --bind "$_proxy_bind" > "$_fifo" 2>"$_proxy_log" &
   _proxy_pid=$!
+  echo "[$_WRAPPER_NAME] proxy log: $_proxy_log" >&2
   read -r _proxy_port < "$_fifo"
   rm -f "$_fifo"
 

@@ -75,7 +75,26 @@ BUILTIN_PROXY_DOMAINS: dict[str, list[str]] = {
         "oidc.ap-northeast-1.amazonaws.com",
         "client-telemetry.us-east-1.amazonaws.com",
     ],
+    # gemini CLI: minimum reach categories per Issue #85 / Intent M3
+    #   - auth: Google OAuth flow + account selection
+    #   - api:  Gemini Code Assist + Gemini API endpoints
+    # The exact set is provisional; verify against actual gemini connections
+    # (see README "WSL2 network restriction" section for the runtime check).
+    "gemini": [
+        "accounts.google.com",
+        "oauth2.googleapis.com",
+        "generativelanguage.googleapis.com",
+        "cloudcode-pa.googleapis.com",
+    ],
 }
+# Common to every agent: GitHub-family endpoints all CLIs need regardless of
+# vendor. The rationale for keeping these in COMMON (not per-agent):
+#   - github.com               : user-level OAuth flow, repository browsing
+#   - api.github.com           : releases / PR / Issue REST API
+#   - raw.githubusercontent.com: configuration files, release assets, raw
+#                                content fetched by setup / install scripts
+# When adding a new agent, only place a domain here if it is genuinely shared
+# by every agent; otherwise put it in BUILTIN_PROXY_DOMAINS[<agent>].
 BUILTIN_PROXY_DOMAINS_COMMON: list[str] = [
     "github.com",
     "api.github.com",

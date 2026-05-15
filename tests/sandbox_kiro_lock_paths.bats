@@ -19,8 +19,11 @@ setup() {
   export _fake_lib
 
   # Mirror lib/ structure with the real sandbox.sh plus stubbed platform backends.
+  # sandbox.sh sources netns-const.sh (the netns topology SoT), so the real
+  # file must be mirrored too — it has no side effects, only variable defs.
   mkdir -p "$_fake_lib/platform"
   cp "$JAILRUN_LIB/sandbox.sh" "$_fake_lib/sandbox.sh"
+  cp "$JAILRUN_LIB/netns-const.sh" "$_fake_lib/netns-const.sh"
   printf '#!/bin/sh\n# stub for tests\n' > "$_fake_lib/platform/sandbox-darwin.sh"
   printf '#!/bin/sh\n# stub for tests\n' > "$_fake_lib/platform/sandbox-linux.sh"
 
