@@ -1,5 +1,51 @@
 # Change History
 
+## v0.4.1 — WSL2 netns OUTPUT ポート範囲限定（defense-in-depth 強化）（patch リリース） (2026-05-16)
+
+Issue #86 で defer されていた「namespace 内 OUTPUT iptables ルールが宛先 host IP のみで宛先ポートを限定していない」defense-in-depth gap を解消する patch リリース。`lib/netns-const.sh` に proxy bind 想定ポート範囲の単一 SoT (`JAILRUN_PROXY_PORT_RANGE_START` / `_END`) を追加し、`scripts/wsl2-netns-setup.sh` の OUTPUT ACCEPT ルールを `--dport START:END` に限定。`lib/proxy.py` の bind 経路（`--port N` / `--port 0`）を Unit 001 SoT の範囲内に閉じ込めるよう改修し、Python loader (`lib/netns_const_loader.py`) を新設して setup スクリプトと proxy が同じ SoT を消費する単一窓口を提供。N=10 並列 × 5 反復の可用性テストで範囲幅 60000-60099 を確定。「実行時 sudo 不要」「setup 一回」という v0.4.0 設計特性は維持。
+
+### Changes
+
+#### Production
+
+- **`lib/netns-const.sh`**（Unit 001 / Issue #86 ストーリー1）: 既存 4 変数に加え `JAILRUN_PROXY_PORT_RANGE_START` (`60000`) / `JAILRUN_PROXY_PORT_RANGE_END` (`60099`) を変数代入のみで追加（副作用なし不変条件を維持）。setup スクリプト / proxy.py 双方から source できる単一 SoT として機能。
+- **`scripts/wsl2-netns-setup.sh`**（Unit 001 / ストーリー1）: consumer 側で SoT 範囲値の整数 / `1..65535` / `START <= END` / 先頭ゼロ拒否を検証して fail-fast で exit 1。OUTPUT ACCEPT ルールを `-A OUTPUT -p tcp -d "$HOST_IP" --dport "$START":"$END" -j ACCEPT` に変更し、host IP の範囲外 TCP ポートをデフォルト DROP に閉じ込め。完了メッセージも「proxy binds to <HOST_IP> ports <START>:<END>」へ更新。
+- **`lib/netns_const_loader.py`**（Unit 002 / ストーリー2 / 新規）: SoT 読取の単一公開 API として関数ファサード `load_port_range()` を提供。SoT パスは `__file__` 相対固定で runtime 上書き経路を持たず（環境変数依存撤廃）、`sh -c` は位置引数化で injection 排除。失敗時は `RuntimeError` に resolved 絶対パスを必ず含める契約。
+- **`lib/proxy.py`**（Unit 002 / ストーリー2）: `--enforce-port-range` フラグを新設し、フラグが立っている場合のみ SoT 範囲制約を適用（`--port N` で N が範囲外なら `RuntimeError` で fail-closed、`--port 0` は範囲内を昇順に手動 bind 試行）。フラグなしでは v0.4.0 と同じ OS エフェメラル既定動作を維持し、netns 非使用時の並列実行可用性回帰を防ぐ（PR #89 pre-merge review #2 への対応）。`main()` で `RuntimeError` を捕捉して stderr + exit 1。
+- **`lib/sandbox.sh`**（Unit 002 / PR #89 review #2 対応）: `_start_proxy()` が `_NETNS` 設定時のみ `--enforce-port-range` を proxy.py に渡すように改修（非 netns モードでは v0.4.0 同等の挙動）。
+- **`Makefile`**（Unit 002 / PR #89 review #1 対応）: `lib/netns_const_loader.py` を install 対象に追加。proxy.py の import 依存が installed 環境でも解決されるようにする。
+- **`lib/sandbox.sh`**（Unit 003 / ストーリー3）: `_start_proxy()` のコメントを SoT 範囲依存に更新（v0.4.1 PR レビューで `--enforce-port-range` フラグ送出の実装変更も追加）。
+
+#### Tests
+
+- **`tests/wsl2_netns_output_range.bats`**（Unit 001 / 新規 / 静的 7 件 + root-gated 動作 4 件）: SoT 公開キーが POSIX sh から source 可能 / 副作用なし維持 / setup OUTPUT に `--dport` 制約 / 整数検証ロジック存在 / `bash -n` clean / 不変条件成立 / fixture を使った非整数・先頭ゼロ拒否。動作テストは B1（iptables 展開直接確認）+ B2（範囲外 timeout）+ B3（範囲内成功）+ B4（再 setup 冪等性）を triangulation で同時実行。Unit 002 で S7 を共通テストベクトル消費に拡張。
+- **`tests/proxy_port_range.bats`**（Unit 002 / 新規 / 3 件）: CLI level の挙動ベース検証 — 範囲下限未満 fail-closed / 上限超 fail-closed / port=0 範囲内 bind。import grep は実装詳細結合のため明示的に対象外。
+- **`tests/proxy_parallel_availability.bats`**（Unit 002 / 新規 / N=10 × 5 反復）: loopback で 50 並列 bind 試行をすべて範囲内かつ重複なしで成功させる可用性テスト。`PIDS` / `STDOUT_FILES` / `STDERR_FILES` / `PORTS` を同じ添字で管理し、spawn → readiness → kill → wait → verify の決定的シーケンスを各反復で実行。
+- **`tests/port_range_invalid_vectors.py`**（Unit 002 / 新規）: Python 単一正準の異常ケース集合 9 件（先頭ゼロ / 非数 / 範囲外 / `START > END` / 空文字）。`tests/test_netns_const_loader.py`（Python loader 単体）と `tests/wsl2_netns_output_range.bats` の S7 拡張（setup スクリプト consumer 検証）が **同じファイルを直接読む** ことで Python / shell 検証ロジックの drift を物理的に排除。
+- **`tests/test_netns_const_loader.py`**（Unit 002 / 新規）: `load_port_range()` の happy path / SoT パス不在 / 共通異常ベクトル全件 / エラーメッセージへの resolved path 包含 / 公開 API 表面（`__all__` が関数 1 本のみ）を検証。モンキーパッチで `_resolve_netns_const_path` を差し替え、環境変数依存ゼロでテスト可能。
+- **`tests/test_proxy.py`**（Unit 002 / 既存に追加 / `TestBindInRange` 3 件 + `TestRunProxyPortRange` 2 件）: `_bind_in_range()` の単体（範囲内 bind / 順序通り次候補に skip / 範囲枯渇時の `RuntimeError`）と `run_proxy()` の範囲外 fail-closed を分離検証。
+
+#### Documentation
+
+- **`README.md`**（Unit 003 / ストーリー3）: WSL2 netns セクションに defense-in-depth の意味 + 保証範囲（`10.200.0.1:60000..60099` のみ）+ 現行 OUTPUT ルール確認コマンド（`sudo ip netns exec agentns iptables -L OUTPUT -v -n | grep dpts`）+ v0.4.0 setup 済みユーザー向け再 setup 手順 + SoT 変更時の追従モデル（再 setup 必須 / 未再 setup 時は旧 iptables 継続、proxy 自体は起動するが agentns から到達不可で実通信が失敗する runtime fail-closed）を追記。
+- **`scripts/wsl2-netns-setup.sh`**（Unit 001）: 冒頭コメントを「proxy at 10.200.0.1 on the configured TCP port range (JAILRUN_PROXY_PORT_RANGE_START:..._END)」へ更新。
+- **`lib/proxy.py`**（Unit 003）: docstring に「v0.4.1 から bind port は SoT 範囲内に閉じ込められる」「`--port N` 範囲外は fail-closed」「`--port 0` は OS エフェメラルへフォールバックしない」を明記。
+- **`lib/sandbox.sh`**（Unit 003）: `_start_proxy()` の bind 周辺コメントに SoT 範囲依存の意図を追記。
+
+#### Build
+
+- **`bin/jailrun`**（Unit 003）: `VERSION` 定数を `0.4.0` → `0.4.1` に更新。
+
+### Review
+
+- **Unit 001**: 計画 codex 3R / 設計 codex 3R / コード codex 2R / 統合 codex 2R = 全 10 round clean、全 7 指摘 resolved。SoT 検証ロジックの先頭ゼロ拒否強化（コードレビュー R1 #1）、SoT 格納方式の明示的固定（計画 R1 #2）、Unit 002 consumption contract の確定（計画 R1 #3）、ドメインモデルのルール分割（設計 R1 #1）等を反映。
+- **Unit 002**: 計画 codex 2R / 設計 codex 3R / コード codex 2R / 統合 codex 1R = 全 8 round clean、全 12 指摘 resolved。`sh -c` injection 排除（コード R1 #1）、runtime SoT 上書き経路撤廃（コード R1 #2、`JAILRUN_LIB` 環境変数依存削除）、テスト責務の分離（コード R1 #3）、共通テストベクトル正準の一元化（設計 R2 #2）等を反映。
+- **Unit 003**: 計画 codex 3R 完了（R1: 4 指摘 / R2: 1 指摘 / R3: clean）、全 5 指摘 resolved（SoT 変更時追従モデルの README 明文化必須化が高重要度）。
+
+### Backlog 繰越
+
+- 現時点で v0.4.1 サイクル発生の指摘はすべて resolved（繰越なし）。Issue #86 はサイクル成果物で完全クローズ予定。
+
 ## v0.4.0 — WSL2 netns 安全性強化 + proxy エラーハンドリング堅牢化 + allow domains 整理（minor リリース） (2026-05-15)
 
 v0.3.7 で main にマージ済みの WSL2 network namespace 機能（`agentns` モード）について、運用ライフサイクル・proxy 起動失敗時のリーク・allow domains の設定方式不整合を解消する minor リリース。`agentns` 削除手順を公式化し、起動失敗時の proxy リーク（PID 取り残し / TCP ポートホールド）を構造的に塞ぎ、`BUILTIN_PROXY_DOMAINS` を agent 別の単一テーブルに整理した。

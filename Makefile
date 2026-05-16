@@ -31,6 +31,7 @@ install:
 	install -m 644 lib/config_cli.py $(PREFIX)/lib/jailrun/config_cli.py
 	install -m 644 lib/config_migrate.py $(PREFIX)/lib/jailrun/config_migrate.py
 	install -m 644 lib/proxy.py $(PREFIX)/lib/jailrun/proxy.py
+	install -m 644 lib/netns_const_loader.py $(PREFIX)/lib/jailrun/netns_const_loader.py
 
 test:
 	bats tests/
