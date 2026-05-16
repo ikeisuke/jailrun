@@ -131,6 +131,17 @@ _netns_gate_or_skip() {
   rm -rf "$_prefix"
 }
 
+# Cycle v0.4.1 / Unit 002: lib/proxy.py now imports netns_const_loader at
+# launch, so the install payload must ship the loader alongside proxy.py
+# (regression guard for the PR pre-merge review finding in v0.4.1 #89).
+@test "make install distributes lib/netns_const_loader.py" {
+  _prefix="$(mktemp -d)"
+  run make -C "$_repo_root" install PREFIX="$_prefix"
+  [ "$status" -eq 0 ]
+  [ -f "$_prefix/lib/jailrun/netns_const_loader.py" ]
+  rm -rf "$_prefix"
+}
+
 # --- teardown script: non-root error path (runs everywhere) ---
 
 @test "wsl2-netns-teardown.sh is executable" {
