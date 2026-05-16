@@ -401,7 +401,11 @@ _start_proxy() {
   # Convert space-separated to comma-separated for proxy.py
   _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
 
-  # Bind to veth-host IP when network namespace is active
+  # Bind to veth-host IP when network namespace is active. proxy.py picks
+  # an actual port from the SoT range JAILRUN_PROXY_PORT_RANGE_START..END
+  # (lib/netns-const.sh, see cycle v0.4.1 / Unit 002) — we do not pass
+  # --port and intentionally rely on proxy.py's own ranged ephemeral
+  # allocation so the bind always matches the netns OUTPUT --dport rule.
   _proxy_bind="127.0.0.1"
   if [ -n "$_NETNS" ]; then
     _proxy_bind="$JAILRUN_NETNS_HOST_IP"

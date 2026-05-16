@@ -9,6 +9,16 @@ Usage:
     python3 proxy.py --allow-domains "api.anthropic.com,github.com" [--port 0]
 
 The proxy prints the listening port to stdout on startup, then logs to stderr.
+
+Since cycle v0.4.1, the bind port is always inside the SoT range defined in
+``lib/netns-const.sh`` (``JAILRUN_PROXY_PORT_RANGE_START..END``):
+
+- ``--port N`` with N outside [START, END] is rejected (fail-closed)
+- ``--port 0`` (default) does NOT fall back to OS ephemeral ports; the proxy
+  scans [START, END] sequentially and binds the first available port
+
+This keeps the proxy's bind range in lock-step with the WSL2 netns iptables
+``--dport`` rule installed by ``scripts/wsl2-netns-setup.sh``.
 """
 
 from __future__ import annotations

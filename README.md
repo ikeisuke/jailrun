@@ -129,7 +129,7 @@ systemd integration. The proxy starts and `HTTPS_PROXY` is set, but the
 agent can bypass it by connecting directly.
 
 To enforce network restriction on WSL2, use a **network namespace** so the
-agent can only reach the proxy:
+agent can only reach the proxy on a **defined TCP port range**:
 
 ```bash
 # One-time setup (requires sudo, idempotent)
@@ -139,11 +139,53 @@ sudo scripts/wsl2-netns-setup.sh
 This is kernel-enforced and cannot be bypassed from inside the namespace.
 
 When the `agentns` namespace exists, jailrun automatically detects it and:
-- Binds the proxy to `10.200.0.1` (ephemeral port) instead of `127.0.0.1`
+- Binds the proxy to `10.200.0.1` on a port inside the SoT range defined in
+  `lib/netns-const.sh` (`JAILRUN_PROXY_PORT_RANGE_START..END`, currently
+  `60000..60099`) instead of `127.0.0.1` on an arbitrary OS-assigned port
 - Launches the agent inside the namespace via `NetworkNamespacePath`
 
 So after running the setup script, a normal `jailrun claude` will use the
 namespace automatically. No sudo is required at runtime.
+
+Since cycle v0.4.1, the namespace OUTPUT `iptables` rule is restricted to
+**TCP destination ports inside that range only** (defense-in-depth): the
+agent can no longer reach arbitrary services that happen to listen on
+`10.200.0.1` (for example a host-side SSH daemon or local dev server).
+
+**Verify the current OUTPUT rule** (must show a `dpts:60000:60099` range
+matching the SoT):
+
+```bash
+sudo ip netns exec agentns iptables -L OUTPUT -v -n | grep dpts
+# expected: ... dpts:60000:60099 ... ACCEPT
+```
+
+If the line is missing (no `dpts:` segment), you are still on the v0.4.0
+setup that allowed every host IP port. Re-run the setup to upgrade:
+
+```bash
+# Re-setup for users who installed under v0.4.0 or earlier
+sudo scripts/wsl2-netns-teardown.sh
+sudo scripts/wsl2-netns-setup.sh
+sudo ip netns exec agentns iptables -L OUTPUT -v -n | grep dpts   # confirm
+```
+
+jailrun does **not** auto-migrate the namespace at runtime (this would
+require sudo every launch); the manual re-setup above is the only path.
+
+#### SoT change follow-up contract
+
+If you ever change `JAILRUN_PROXY_PORT_RANGE_*` in `lib/netns-const.sh`,
+the existing namespace's `iptables` rule keeps the **old** range until you
+re-run the setup script — `sudo scripts/wsl2-netns-teardown.sh` followed
+by `sudo scripts/wsl2-netns-setup.sh`. The proxy (which reads the SoT at
+launch) will pick up the new range immediately, so without re-setup the
+proxy's bind range and the kernel's accept range diverge: the proxy
+process itself **does** start and bind successfully on the host side, but
+traffic from inside `agentns` to the proxy's new port is dropped by the
+old OUTPUT rule, so every CONNECT request times out. That is, the proxy
+stays unreachable from the sandbox until you re-setup — not a startup
+failure, a reachability failure at runtime.
 
 To remove the namespace, run the teardown script (also idempotent — safe
 to run when nothing exists or after a partially failed setup):
