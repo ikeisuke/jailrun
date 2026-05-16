@@ -171,31 +171,43 @@ exec /usr/bin/env id "$@"
 EOSH
   chmod +x "$shim_bin/id"
 
-  cat >"$fixture_lib/netns-const.sh" <<'EOC'
+  # Iterate the shared test vectors (tests/port_range_invalid_vectors.py) —
+  # this is the same data the Python loader unit tests consume, so any
+  # divergence between setup.sh and lib/netns_const_loader.py is caught
+  # by both suites pointing at the same fixture set (cycle v0.4.1 / Unit 002
+  # logical design, codex plan R1 #4 + design R2 #2).
+  local vectors_script="$_repo_root/tests"
+  local vectors
+  vectors=$(python3 -c "
+import sys
+sys.path.insert(0, '$vectors_script')
+from port_range_invalid_vectors import INVALID_VECTORS
+for v in INVALID_VECTORS:
+    print('\t'.join(v))
+")
+  [ -n "$vectors" ]
+
+  local line
+  while IFS=$'\t' read -r raw_start raw_end label; do
+    cat >"$fixture_lib/netns-const.sh" <<EOC
 JAILRUN_NETNS_HOST_IP="10.200.0.1"
 JAILRUN_NETNS_NAME="agentns"
 JAILRUN_NETNS_VETH_HOST="veth-host"
 JAILRUN_NETNS_VETH_AGENT="veth-agent"
-JAILRUN_PROXY_PORT_RANGE_START="abc"
-JAILRUN_PROXY_PORT_RANGE_END="60099"
+JAILRUN_PROXY_PORT_RANGE_START="${raw_start}"
+JAILRUN_PROXY_PORT_RANGE_END="${raw_end}"
 EOC
-
-  PATH="$shim_bin:$PATH" run "$fixture/wsl2-netns-setup.sh"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"JAILRUN_PROXY_PORT_RANGE_START / _END must be integers in 1..65535"* ]]
-
-  # Leading-zero rejection (decimal integer contract — no leading zeros).
-  cat >"$fixture_lib/netns-const.sh" <<'EOC'
-JAILRUN_NETNS_HOST_IP="10.200.0.1"
-JAILRUN_NETNS_NAME="agentns"
-JAILRUN_NETNS_VETH_HOST="veth-host"
-JAILRUN_NETNS_VETH_AGENT="veth-agent"
-JAILRUN_PROXY_PORT_RANGE_START="0001"
-JAILRUN_PROXY_PORT_RANGE_END="60099"
-EOC
-  PATH="$shim_bin:$PATH" run "$fixture/wsl2-netns-setup.sh"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"must be integers in 1..65535"* ]]
+    PATH="$shim_bin:$PATH" run "$fixture/wsl2-netns-setup.sh"
+    if [ "$status" -eq 0 ]; then
+      echo "vector ${label} (${raw_start},${raw_end}) was accepted; expected exit 1" >&2
+      false
+    fi
+    if ! [[ "$output" == *"netns constants incomplete in"* \
+         || "$output" == *"must be integers in 1..65535"* ]]; then
+      echo "vector ${label} (${raw_start},${raw_end}) exit 1 but wrong message: $output" >&2
+      false
+    fi
+  done <<< "$vectors"
 }
 
 # --- B1: setup applies OUTPUT --dport range inside the namespace ---

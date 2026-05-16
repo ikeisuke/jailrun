@@ -184,5 +184,75 @@ class TestHandleClient(unittest.TestCase):
         mock_dns.assert_called_once_with("example.com", 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
 
 
+class TestBindInRange(unittest.TestCase):
+    """Tests for proxy._bind_in_range (cycle v0.4.1 / Unit 002).
+
+    These exercise the helper directly; run_proxy integration is covered
+    by the bats suites (proxy_port_range.bats and
+    proxy_parallel_availability.bats).
+    """
+
+    def test_returns_socket_inside_range(self):
+        sock = proxy._bind_in_range("127.0.0.1", 60000, 60099)
+        try:
+            actual = sock.getsockname()[1]
+            self.assertGreaterEqual(actual, 60000)
+            self.assertLessEqual(actual, 60099)
+        finally:
+            sock.close()
+
+    def test_returns_first_available_port_in_order(self):
+        # Hold the very first port in a 2-port range so _bind_in_range
+        # is forced to skip to the next candidate.
+        holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        holder.bind(("127.0.0.1", 0))
+        held_port = holder.getsockname()[1]
+        holder.listen(1)
+        try:
+            sock = proxy._bind_in_range(
+                "127.0.0.1", held_port, held_port + 1,
+            )
+            try:
+                self.assertEqual(sock.getsockname()[1], held_port + 1)
+            finally:
+                sock.close()
+        finally:
+            holder.close()
+
+    def test_exhausted_range_raises(self):
+        holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        holder.bind(("127.0.0.1", 0))
+        held_port = holder.getsockname()[1]
+        holder.listen(1)
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                proxy._bind_in_range("127.0.0.1", held_port, held_port)
+            self.assertIn("failed to bind", str(ctx.exception))
+        finally:
+            holder.close()
+
+
+class TestRunProxyPortRange(unittest.TestCase):
+    """Tests for run_proxy's range enforcement (cycle v0.4.1 / Unit 002).
+
+    These cover the explicit ``--port N`` fail-closed path. The accept
+    loop is not exercised here — proxy.py's accept loop is covered by
+    the existing TestHandleClient suite, and bind-in-range integration
+    on real sockets lives in the bats suites.
+    """
+
+    def test_explicit_port_below_range_raises(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            proxy.run_proxy({"test.invalid"}, port=99, bind="127.0.0.1")
+        self.assertIn("outside the configured proxy port range", str(ctx.exception))
+
+    def test_explicit_port_above_range_raises(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            proxy.run_proxy({"test.invalid"}, port=65535, bind="127.0.0.1")
+        self.assertIn("outside the configured proxy port range", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

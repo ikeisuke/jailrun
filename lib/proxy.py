@@ -21,6 +21,8 @@ import socket
 import sys
 import threading
 
+from netns_const_loader import load_port_range
+
 logger = logging.getLogger("jailrun-proxy")
 
 # RFC1918 + link-local + loopback + metadata endpoints
@@ -185,11 +187,47 @@ def handle_client(
             pass
 
 
+def _bind_in_range(bind: str, start: int, end: int) -> socket.socket:
+    """Try sequential bind across [start, end] and return the first success.
+
+    Mirrors the iptables --dport START:END contract from cycle v0.4.1 /
+    Unit 001: the proxy must never bind outside the SoT range, so the
+    ephemeral path does NOT fall back to OS-assigned ports.
+    """
+    last_error: OSError | None = None
+    for candidate in range(start, end + 1):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((bind, candidate))
+            return sock
+        except OSError as exc:
+            last_error = exc
+            sock.close()
+            continue
+    tried = end - start + 1
+    raise RuntimeError(
+        f"failed to bind to any port in range [{start}, {end}] "
+        f"(tried {tried}, last error: {last_error})"
+    )
+
+
 def run_proxy(allowed_domains: set[str], port: int = 0, bind: str = "127.0.0.1") -> None:
-    """Start the proxy server."""
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((bind, port))
+    """Start the proxy server, constrained to the configured port range."""
+    start, end = load_port_range()
+
+    if port == 0:
+        server = _bind_in_range(bind, start, end)
+    else:
+        if port < start or port > end:
+            raise RuntimeError(
+                f"requested port {port} is outside the configured proxy "
+                f"port range [{start}, {end}]"
+            )
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((bind, port))
+
     server.listen(128)
 
     actual_port = server.getsockname()[1]
@@ -250,7 +288,11 @@ def main() -> None:
         logger.error("no allowed domains specified")
         sys.exit(1)
 
-    run_proxy(allowed, args.port, args.bind)
+    try:
+        run_proxy(allowed, args.port, args.bind)
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
