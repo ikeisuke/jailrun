@@ -1,5 +1,47 @@
 # Change History
 
+## v0.4.2 — WSL2 PTY allocation 失敗の sandbox 側修正 + `_start_proxy` proxy skip regression 修正（patch リリース） (2026-05-16)
+
+WSL2 環境で AI コーディングエージェント TUI の **直接シェル実行系**（`!ls` のような bash mode / `!` プレフィックス）が `Application Error: Failed to open PTY` で死ぬ Issue #90 を sandbox 側で根本対策する patch リリース。systemd-run の `PrivateDevices=yes` が WSL2 で devpts を正しくマウントせず子プロセスの PTY 確保が失敗する問題に対し、WSL2 検出時のみ `PrivateDevices=yes` を省略しつつ AppArmor profile に PTY device rule（`/dev/ptmx` / `/dev/pts/` / `owner /dev/pts/**`、最後のみ caller 所有 PTY 限定の owner 修飾子）を追加して PTY 可用性を回復させた（Unit 001）。
+
+サイクル進行中にユーザー手動報告（`bash -x bin/jailrun claude --version` トレース）で発見した `lib/sandbox.sh` の `_start_proxy` 内 critical regression（`_proxy_should_start || return` が `set -e` 下で exit code 1 を伝播し agent 起動前に abort する）を 1 行修正（`return 0` 化）で解消（Unit 003、サイクル中拡張として Intent 項目 6 に正式化）。HISTORY / README は本 Unit 002 で WSL2 trade-off の明示と共に反映。
+
+PR: {{PR_URL}}
+
+### Changes
+
+#### Production
+
+- **`lib/platform/sandbox-linux-systemd.sh`**（Unit 001 / Issue #90）: WSL2 判定ヘルパー `_is_wsl2()` を新設（`uname -r` を `LC_ALL=C tr '[:upper:]' '[:lower:]'` で小文字化し `microsoft` または `wsl2` を部分一致で検出、`uname` 失敗や空出力は native 扱い）。`_setup_sandbox()` 内の `PrivateDevices=yes` 行を `_is_wsl2` で条件付け、WSL2 検出時のみ省略。native Linux 経路の systemd props 出力は完全に従来通り。
+- **`lib/platform/sandbox-linux-apparmor.sh`**（Unit 001 / Issue #90）: `_build_apparmor_profile()` に PTY device rule 3 行を追加（`/dev/ptmx rw,` + `/dev/pts/ rw,` + `owner /dev/pts/** rw,`）。`/dev/ptmx` と `/dev/pts/` は devpts multiplexer / ディレクトリで root:root 所有のため unqualified、`/dev/pts/**`（allocate された個別 PTY）は caller 所有になるため `owner` 修飾子で多ユーザー隔離 hardening を担保。WSL2 / native Linux 共通で出力。
+- **`lib/sandbox.sh`**（Unit 003 / サイクル中拡張）: `_start_proxy()` 内 proxy skip 経路の `_proxy_should_start || return` を `_proxy_should_start || return 0` に 1 行修正。POSIX sh の `return` 引数省略時挙動（直前 exit code 伝播）により `_proxy_should_start` の return 1 が関数全体の exit 1 として呼び出し側に伝わっていたため、`set -e` 下で proxy 不要環境（macOS Seatbelt / native Linux ローカル開発 / proxy 機能無効化）の agent 起動が abort していた。意図コメント 2 行も追加。
+
+#### Tests
+
+- **`tests/sandbox_linux_systemd.bats`**（Unit 001 / 新規 7 件）: `_is_wsl2` 単体契約 5 件（`microsoft-standard-WSL2` 検出 / 旧 `microsoft-standard` 検出 / native kernel 拒否 / `uname` 空出力 / `uname` コマンド失敗の独立検証）+ props 統合 2 件（WSL2 シミュレート時 `PrivateDevices=yes` 非出力 / native 時出力 = regression ガード）。`run_setup_sandbox` ヘルパに `_IS_WSL2_OVERRIDE` 環境変数を導入し host kind に依存しない deterministic な検証を実現。
+- **`tests/sandbox_linux_apparmor.bats`**（Unit 001 / 新規 4 件）: PTY rule 3 件（`/dev/ptmx rw,` 存在 + owner 非適用 / `/dev/pts/ rw,` 存在 + owner 非適用 / `owner /dev/pts/** rw,` 存在）+ 既存 deny rule regression 1 件（`deny /run/user/*/bus rw,` / config_path deny / deny read paths が PTY 追加後も残存）。
+- **`tests/sandbox_proxy_skip.bats`**（Unit 003 / 新規 3 件）: set -e 実害経路の防波堤（`sh -ec '. lib/sandbox.sh; _proxy_should_start() { return 1; }; _start_proxy; echo OK'` で OK 出力確認）+ python3 PATH shim 経由の正常系（shim が 12345 を出力し `_PROXY_PORT=12345` 設定確認）+ 単体 return 0 確認の 3 件。`tests/proxy_readiness.bats` の `setup()` パターン（`_fake_lib` に `sandbox.sh` / `netns-const.sh` コピー + `platform/*.sh` stub + `ip` / `python3` PATH shim）を準用。
+- 合計 14 件の bats 追加。`make test` 全体で bats 284 件全件 pass / pytest 81 件 OK / failure 0 を達成。Unit 003 の fix を `git stash` で退避すると Test 1/3 が fail することを実機確認し、回帰防波堤としての機能を実証。
+
+#### Documentation
+
+- **`HISTORY.md`**（Unit 002）: 本 v0.4.2 セクション追加。
+- **`README.md`**（Unit 002）: `### Linux/WSL2` セクション内 `#### WSL2 AppArmor primary profile setup` の直前に新規サブセクション `#### WSL2 PTY allocation trade-off (v0.4.2+)` を追加。`PrivateDevices=yes` 省略の trade-off（device isolation が native Linux より弱まる）と AppArmor PTY rule 追加（owner 修飾子の最小適用範囲）を明示。
+
+#### Build
+
+- なし。`bin/jailrun` の `VERSION` 定数（現行 `0.4.1`）の `0.4.2` への bump は Operations Phase で実施予定（v0.4.1 と同じ運用）。
+
+### Review
+
+- **Unit 001**（WSL2 PTY sandbox 修正）: 計画 codex 4R / 設計 codex 4R / コード codex 3R / 統合 codex 3R = 全 14 round clean、全 15 指摘 resolved。代表対応: `_is_wsl2` 契約テストの uname 失敗ケース独立検証（設計 R1 #2）、AppArmor `owner /dev/ptmx` 付与時の非 root 拒否回帰回避（コード R2 #1）、PTY rule 常時出力の根拠を設計記録に明文化（計画 R1 #2）、ロールバック手順セクション新設（計画 R1 #4）。
+- **Unit 003**（`_start_proxy` proxy skip regression）: 計画 codex 3R / 設計 codex 3R / コード codex 1R(1R clean) / 統合 codex 2R = 全 9 round clean、全 10 指摘 resolved。代表対応: set -e 実害経路の防波堤テスト追加（計画 R1 #1）、テスト stub 戦略を python3 PATH shim 方式に固定（計画 R1 #2）、cleanup を `_PROXY_PID` 経由の kill に統一（設計 R2 #1）、Test 2 が事後条件（`_PROXY_PORT=12345`）まで検証（設計 R1 #1）。
+- **Unit 002**（HISTORY/README ドキュメント反映）: 計画 codex 3R / 設計 codex 2R / コード codex 2R / 統合 codex 2R = 全 9 round clean、全 10 指摘 resolved。代表対応: 機械検証 awk スクリプトを `getline` 方式から重なり比較方式に変更（設計 R1 #1）、README 追記位置を「直前固定」に統一（計画 R1 #3）、HISTORY `### Changes` に `#### Build` セクション追加で v0.4.1 互換構造完備（コード R1 #1）、README Issue #90 参照を独立段落化（コード R1 #2）。
+
+### Backlog 繰越
+
+- 現時点で v0.4.2 サイクル発生の指摘はすべて resolved（繰越なし）。Issue #90 はサイクル成果物で完全クローズ予定（Operations Phase の PR マージ時に自動連携）。Unit 003 由来の proxy skip regression は別 Issue として既存トラッカーに存在しないが、サイクル中報告 → 本サイクル内修正で完結のため Backlog Issue 化は省略。
+
 ## v0.4.1 — WSL2 netns OUTPUT ポート範囲限定（defense-in-depth 強化）（patch リリース） (2026-05-16)
 
 Issue #86 で defer されていた「namespace 内 OUTPUT iptables ルールが宛先 host IP のみで宛先ポートを限定していない」defense-in-depth gap を解消する patch リリース。`lib/netns-const.sh` に proxy bind 想定ポート範囲の単一 SoT (`JAILRUN_PROXY_PORT_RANGE_START` / `_END`) を追加し、`scripts/wsl2-netns-setup.sh` の OUTPUT ACCEPT ルールを `--dport START:END` に限定。`lib/proxy.py` の bind 経路（`--port N` / `--port 0`）を Unit 001 SoT の範囲内に閉じ込めるよう改修し、Python loader (`lib/netns_const_loader.py`) を新設して setup スクリプトと proxy が同じ SoT を消費する単一窓口を提供。N=10 並列 × 5 反復の可用性テストで範囲幅 60000-60099 を確定。「実行時 sudo 不要」「setup 一回」という v0.4.0 設計特性は維持。
