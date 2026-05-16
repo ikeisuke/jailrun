@@ -61,7 +61,10 @@ teardown() {
       local err="$BATS_TEST_TMPDIR/proxy.$i.$j.err"
       STDOUT_FILES[j]="$out"
       STDERR_FILES[j]="$err"
-      python3 "$_proxy" --allow-domains test.invalid --bind 127.0.0.1 \
+      # --enforce-port-range matches the production netns invocation
+      # (sandbox.sh passes this flag when _NETNS is set); we exercise
+      # the same code path here to validate range capacity at N=10.
+      python3 "$_proxy" --allow-domains test.invalid --bind 127.0.0.1 --enforce-port-range \
         >"$out" 2>"$err" &
       PIDS[j]=$!
     done

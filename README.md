@@ -142,6 +142,8 @@ When the `agentns` namespace exists, jailrun automatically detects it and:
 - Binds the proxy to `10.200.0.1` on a port inside the SoT range defined in
   `lib/netns-const.sh` (`JAILRUN_PROXY_PORT_RANGE_START..END`, currently
   `60000..60099`) instead of `127.0.0.1` on an arbitrary OS-assigned port
+  (the proxy is invoked with `--enforce-port-range` only in this mode; plain
+  `127.0.0.1` launches keep using the OS ephemeral pool, see PR #89)
 - Launches the agent inside the namespace via `NetworkNamespacePath`
 
 So after running the setup script, a normal `jailrun claude` will use the

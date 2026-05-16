@@ -243,15 +243,41 @@ class TestRunProxyPortRange(unittest.TestCase):
     on real sockets lives in the bats suites.
     """
 
-    def test_explicit_port_below_range_raises(self):
+    def test_explicit_port_below_range_raises_when_enforced(self):
         with self.assertRaises(RuntimeError) as ctx:
-            proxy.run_proxy({"test.invalid"}, port=99, bind="127.0.0.1")
+            proxy.run_proxy(
+                {"test.invalid"}, port=99, bind="127.0.0.1",
+                enforce_port_range=True,
+            )
         self.assertIn("outside the configured proxy port range", str(ctx.exception))
 
-    def test_explicit_port_above_range_raises(self):
+    def test_explicit_port_above_range_raises_when_enforced(self):
         with self.assertRaises(RuntimeError) as ctx:
-            proxy.run_proxy({"test.invalid"}, port=65535, bind="127.0.0.1")
+            proxy.run_proxy(
+                {"test.invalid"}, port=65535, bind="127.0.0.1",
+                enforce_port_range=True,
+            )
         self.assertIn("outside the configured proxy port range", str(ctx.exception))
+
+    def test_below_range_port_is_allowed_without_enforce(self):
+        # Without --enforce-port-range, an "out of SoT" port like 0 or
+        # any free port is fine — this is the v0.4.0 behaviour that
+        # cycle v0.4.1 must preserve for non-netns callers.
+        import threading
+        thread = threading.Thread(
+            target=proxy.run_proxy,
+            args=({"test.invalid"},),
+            kwargs={"port": 0, "bind": "127.0.0.1"},
+            daemon=True,
+        )
+        # Start and immediately mark — the accept loop blocks forever,
+        # but bind/listen happen synchronously inside run_proxy before
+        # the loop. We only need to assert that bind did not raise.
+        thread.start()
+        thread.join(timeout=0.5)
+        # If bind had raised, the thread would have completed with an
+        # exception swallowed; here we just confirm it stayed alive.
+        self.assertTrue(thread.is_alive())
 
 
 if __name__ == "__main__":

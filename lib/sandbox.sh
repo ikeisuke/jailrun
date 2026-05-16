@@ -401,14 +401,18 @@ _start_proxy() {
   # Convert space-separated to comma-separated for proxy.py
   _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
 
-  # Bind to veth-host IP when network namespace is active. proxy.py picks
-  # an actual port from the SoT range JAILRUN_PROXY_PORT_RANGE_START..END
-  # (lib/netns-const.sh, see cycle v0.4.1 / Unit 002) — we do not pass
-  # --port and intentionally rely on proxy.py's own ranged ephemeral
-  # allocation so the bind always matches the netns OUTPUT --dport rule.
+  # Bind to veth-host IP when network namespace is active. In netns mode we
+  # also pass --enforce-port-range so proxy.py constrains its bind to the
+  # SoT range JAILRUN_PROXY_PORT_RANGE_START..END (lib/netns-const.sh, see
+  # cycle v0.4.1 / Unit 002) — this is what keeps proxy bind and the netns
+  # OUTPUT --dport rule in lock-step. Outside netns we deliberately leave
+  # the flag off so plain 127.0.0.1 launches keep using the full OS
+  # ephemeral pool (v0.4.0 behaviour, see PR #89 pre-merge review).
   _proxy_bind="127.0.0.1"
+  _proxy_extra_args=""
   if [ -n "$_NETNS" ]; then
     _proxy_bind="$JAILRUN_NETNS_HOST_IP"
+    _proxy_extra_args="--enforce-port-range"
   fi
 
   # Start proxy, capture port from first stdout line via FIFO.
@@ -418,7 +422,7 @@ _start_proxy() {
   _fifo="$_tmpdir/proxy-port"
   mkfifo "$_fifo"
   _proxy_log="$_tmpdir/proxy.log"
-  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" --bind "$_proxy_bind" > "$_fifo" 2>"$_proxy_log" &
+  python3 "$JAILRUN_LIB/proxy.py" --allow-domains "$_domains" --bind "$_proxy_bind" $_proxy_extra_args > "$_fifo" 2>"$_proxy_log" &
   _proxy_pid=$!
   echo "[$_WRAPPER_NAME] proxy log: $_proxy_log" >&2
   read -r _proxy_port < "$_fifo"

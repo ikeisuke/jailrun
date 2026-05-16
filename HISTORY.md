@@ -11,8 +11,10 @@ Issue #86 で defer されていた「namespace 内 OUTPUT iptables ルールが
 - **`lib/netns-const.sh`**（Unit 001 / Issue #86 ストーリー1）: 既存 4 変数に加え `JAILRUN_PROXY_PORT_RANGE_START` (`60000`) / `JAILRUN_PROXY_PORT_RANGE_END` (`60099`) を変数代入のみで追加（副作用なし不変条件を維持）。setup スクリプト / proxy.py 双方から source できる単一 SoT として機能。
 - **`scripts/wsl2-netns-setup.sh`**（Unit 001 / ストーリー1）: consumer 側で SoT 範囲値の整数 / `1..65535` / `START <= END` / 先頭ゼロ拒否を検証して fail-fast で exit 1。OUTPUT ACCEPT ルールを `-A OUTPUT -p tcp -d "$HOST_IP" --dport "$START":"$END" -j ACCEPT` に変更し、host IP の範囲外 TCP ポートをデフォルト DROP に閉じ込め。完了メッセージも「proxy binds to <HOST_IP> ports <START>:<END>」へ更新。
 - **`lib/netns_const_loader.py`**（Unit 002 / ストーリー2 / 新規）: SoT 読取の単一公開 API として関数ファサード `load_port_range()` を提供。SoT パスは `__file__` 相対固定で runtime 上書き経路を持たず（環境変数依存撤廃）、`sh -c` は位置引数化で injection 排除。失敗時は `RuntimeError` に resolved 絶対パスを必ず含める契約。
-- **`lib/proxy.py`**（Unit 002 / ストーリー2）: `run_proxy()` に範囲制約を追加。`--port N` で N が範囲外なら `RuntimeError` で fail-closed、`--port 0`（既定）は OS エフェメラル割当へのフォールバックを廃止し範囲内を昇順に手動 bind 試行。`main()` で `RuntimeError` を捕捉して stderr + exit 1。
-- **`lib/sandbox.sh`**（Unit 003 / ストーリー3）: `_start_proxy()` のコメントを SoT 範囲依存に更新（実装ロジックは無改修、Unit 002 の proxy.py 内部完結のため）。
+- **`lib/proxy.py`**（Unit 002 / ストーリー2）: `--enforce-port-range` フラグを新設し、フラグが立っている場合のみ SoT 範囲制約を適用（`--port N` で N が範囲外なら `RuntimeError` で fail-closed、`--port 0` は範囲内を昇順に手動 bind 試行）。フラグなしでは v0.4.0 と同じ OS エフェメラル既定動作を維持し、netns 非使用時の並列実行可用性回帰を防ぐ（PR #89 pre-merge review #2 への対応）。`main()` で `RuntimeError` を捕捉して stderr + exit 1。
+- **`lib/sandbox.sh`**（Unit 002 / PR #89 review #2 対応）: `_start_proxy()` が `_NETNS` 設定時のみ `--enforce-port-range` を proxy.py に渡すように改修（非 netns モードでは v0.4.0 同等の挙動）。
+- **`Makefile`**（Unit 002 / PR #89 review #1 対応）: `lib/netns_const_loader.py` を install 対象に追加。proxy.py の import 依存が installed 環境でも解決されるようにする。
+- **`lib/sandbox.sh`**（Unit 003 / ストーリー3）: `_start_proxy()` のコメントを SoT 範囲依存に更新（v0.4.1 PR レビューで `--enforce-port-range` フラグ送出の実装変更も追加）。
 
 #### Tests
 

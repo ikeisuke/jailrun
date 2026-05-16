@@ -10,15 +10,24 @@ Usage:
 
 The proxy prints the listening port to stdout on startup, then logs to stderr.
 
-Since cycle v0.4.1, the bind port is always inside the SoT range defined in
-``lib/netns-const.sh`` (``JAILRUN_PROXY_PORT_RANGE_START..END``):
+Cycle v0.4.1 introduces an optional ``--enforce-port-range`` flag that
+locks the bind to the SoT range in ``lib/netns-const.sh``
+(``JAILRUN_PROXY_PORT_RANGE_START..END``). The flag is **off** by default
+so plain ``127.0.0.1`` callers (no WSL2 netns) keep the full OS ephemeral
+range and concurrent local jailrun runs do not contend for a 100-port
+window. ``lib/sandbox.sh`` passes ``--enforce-port-range`` only when the
+``agentns`` namespace is active (i.e. when the netns OUTPUT iptables
+``--dport`` rule actually constrains traffic).
+
+When ``--enforce-port-range`` is set:
 
 - ``--port N`` with N outside [START, END] is rejected (fail-closed)
-- ``--port 0`` (default) does NOT fall back to OS ephemeral ports; the proxy
-  scans [START, END] sequentially and binds the first available port
+- ``--port 0`` (default) does NOT fall back to OS ephemeral ports; the
+  proxy scans [START, END] sequentially and binds the first available
+  port
 
-This keeps the proxy's bind range in lock-step with the WSL2 netns iptables
-``--dport`` rule installed by ``scripts/wsl2-netns-setup.sh``.
+When the flag is **not** set, the proxy uses the unrestricted bind
+behaviour from v0.4.0.
 """
 
 from __future__ import annotations
@@ -222,18 +231,35 @@ def _bind_in_range(bind: str, start: int, end: int) -> socket.socket:
     )
 
 
-def run_proxy(allowed_domains: set[str], port: int = 0, bind: str = "127.0.0.1") -> None:
-    """Start the proxy server, constrained to the configured port range."""
-    start, end = load_port_range()
+def run_proxy(
+    allowed_domains: set[str],
+    port: int = 0,
+    bind: str = "127.0.0.1",
+    enforce_port_range: bool = False,
+) -> None:
+    """Start the proxy server.
 
-    if port == 0:
-        server = _bind_in_range(bind, start, end)
+    When ``enforce_port_range`` is True, the bind is constrained to the SoT
+    range from ``lib/netns-const.sh`` (matching the WSL2 netns iptables
+    ``--dport`` rule). When False (default), the bind uses the unrestricted
+    v0.4.0 behaviour — ``port`` is passed straight to ``bind()`` so
+    ``--port 0`` resolves via the OS ephemeral pool.
+    """
+    if enforce_port_range:
+        start, end = load_port_range()
+
+        if port == 0:
+            server = _bind_in_range(bind, start, end)
+        else:
+            if port < start or port > end:
+                raise RuntimeError(
+                    f"requested port {port} is outside the configured proxy "
+                    f"port range [{start}, {end}]"
+                )
+            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind((bind, port))
     else:
-        if port < start or port > end:
-            raise RuntimeError(
-                f"requested port {port} is outside the configured proxy "
-                f"port range [{start}, {end}]"
-            )
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind((bind, port))
@@ -285,6 +311,15 @@ def main() -> None:
         default="127.0.0.1",
         help="Address to bind to (default: 127.0.0.1)",
     )
+    parser.add_argument(
+        "--enforce-port-range",
+        action="store_true",
+        help=(
+            "Restrict bind to JAILRUN_PROXY_PORT_RANGE_START..END from "
+            "lib/netns-const.sh (default: off; used by sandbox.sh when "
+            "agentns is active to match the iptables --dport rule)"
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -299,7 +334,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        run_proxy(allowed, args.port, args.bind)
+        run_proxy(allowed, args.port, args.bind, args.enforce_port_range)
     except RuntimeError as exc:
         logger.error("%s", exc)
         sys.exit(1)
