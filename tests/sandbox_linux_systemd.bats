@@ -27,8 +27,12 @@ teardown() {
   rm -rf "$_tmpdir"
 }
 
-# Helper: source the script and run _setup_sandbox, then cat the props file
+# Helper: source the script and run _setup_sandbox, then cat the props file.
+# _is_wsl2 is overridden via $_IS_WSL2_OVERRIDE (default: native / return 1) so
+# tests are deterministic regardless of the host running the suite (macOS dev,
+# Linux CI, WSL2 dev). Issue #90 / Unit 001.
 run_setup_sandbox() {
+  local _wsl_override="${_IS_WSL2_OVERRIDE:-return 1}"
   run sh -c '
     _tmpdir="'"$_tmpdir"'"
     _git_parent_toplevel="'"${_git_parent_toplevel:-}"'"
@@ -40,6 +44,7 @@ run_setup_sandbox() {
     export PROXY_ENABLED="'"${PROXY_ENABLED:-false}"'"
     _detect_git_worktree() { :; }
     . "'"$JAILRUN_LIB"'/platform/sandbox-linux-systemd.sh"
+    _is_wsl2() { '"$_wsl_override"'; }
     _setup_sandbox
     cat "$_tmpdir/systemd-props"
   '
@@ -209,4 +214,60 @@ run_setup_sandbox() {
   run_setup_sandbox
   [ "$status" -eq 0 ]
   [[ "$output" == *"ReadWritePaths=$_tmpdir"* ]]
+}
+
+# --- WSL2 detection and PrivateDevices conditional (Issue #90 / Unit 001) ---
+
+# _is_wsl2 contract tests: source the script and invoke _is_wsl2 with the
+# `uname` shell function overridden. These exercise the real implementation
+# (lowercase + microsoft|wsl2 substring match) rather than the helper override
+# used by props integration tests above.
+#
+# Helper: run _is_wsl2 with the given uname() body and return its exit code.
+run_is_wsl2() {
+  local _uname_body="$1"
+  run sh -c '
+    . "'"$JAILRUN_LIB"'/platform/sandbox-linux-systemd.sh"
+    uname() { '"$_uname_body"'; }
+    _is_wsl2
+  '
+}
+
+@test "_is_wsl2 detects microsoft-standard-WSL2 kernel" {
+  run_is_wsl2 "printf '%s\n' '5.15.167.4-microsoft-standard-WSL2'"
+  [ "$status" -eq 0 ]
+}
+
+@test "_is_wsl2 detects legacy microsoft-standard kernel" {
+  run_is_wsl2 "printf '%s\n' '4.19.128-microsoft-standard'"
+  [ "$status" -eq 0 ]
+}
+
+@test "_is_wsl2 rejects native Linux kernel" {
+  run_is_wsl2 "printf '%s\n' '6.6.0-arch1-1'"
+  [ "$status" -eq 1 ]
+}
+
+@test "_is_wsl2 returns 1 when uname output is empty" {
+  run_is_wsl2 "printf ''"
+  [ "$status" -eq 1 ]
+}
+
+@test "_is_wsl2 returns 1 when uname command fails" {
+  run_is_wsl2 "return 1"
+  [ "$status" -eq 1 ]
+}
+
+# Integration: PrivateDevices=yes conditional on _is_wsl2
+
+@test "omits PrivateDevices=yes on WSL2" {
+  _IS_WSL2_OVERRIDE="return 0" run_setup_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"PrivateDevices=yes"* ]]
+}
+
+@test "emits PrivateDevices=yes on native Linux" {
+  _IS_WSL2_OVERRIDE="return 1" run_setup_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PrivateDevices=yes"* ]]
 }

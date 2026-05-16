@@ -91,6 +91,29 @@ sudo apt install libsecret-tools gnome-keyring    # Ubuntu/Debian
 jailrun token add --name github:classic
 ```
 
+#### WSL2 PTY allocation trade-off (v0.4.2+)
+
+WSL2 上で AI コーディングエージェント TUI の直接シェル実行系（`!ls` のような
+bash mode / `!` プレフィックス）を起動すると、`Application Error: Failed to
+open PTY` でプロセスが死ぬ問題がありました。原因は systemd-run の
+`PrivateDevices=yes` が WSL2 で devpts を正しくマウントせず、子プロセスの
+PTY 確保が失敗していたことです。
+
+v0.4.2 以降、jailrun は WSL2 を `uname -r` から検出した場合にのみ
+`PrivateDevices=yes` を省略し、AppArmor プロファイルに PTY device rule
+（`/dev/ptmx` + `/dev/pts/` + `owner /dev/pts/**`、最後のみ caller が所有する
+PTY デバイス限定の `owner` 修飾子）を追加します。これにより WSL2 上でも
+TUI の直接シェル実行が動作するようになります。
+
+トレードオフとして、WSL2 では device isolation の強度が native Linux より
+わずかに弱まります（最小 `/dev` 構築を省略）が、AppArmor 側で broad な
+device 許可は行わず PTY 3 行のみに最小化しているため、攻撃面の拡大は限定的
+です。native Linux と macOS（Seatbelt）の sandbox 強度・挙動は完全に従来通り
+です。
+
+詳細な発生条件と修正内容は Issue
+[#90](https://github.com/ikeisuke/jailrun/issues/90) を参照してください。
+
 #### WSL2 AppArmor primary profile setup
 
 The AppArmor-primary sandbox path requires `securityfs` to be mounted at

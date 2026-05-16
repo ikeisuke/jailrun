@@ -38,6 +38,7 @@ assert_profile_no_rule() {
 
 # Helper: run _setup_sandbox with AppArmor enabled, output both files
 run_setup_with_apparmor() {
+  local _wsl_override="${_IS_WSL2_OVERRIDE:-return 1}"
   run sh -c '
     _tmpdir="'"$_tmpdir"'"
     _git_parent_toplevel="'"${_git_parent_toplevel:-}"'"
@@ -55,6 +56,10 @@ run_setup_with_apparmor() {
     # Override _load to succeed without sudo
     _load_apparmor_profile() { _APPARMOR_PROFILE_LOADED=1; return 0; }
     . "'"$JAILRUN_LIB"'/platform/sandbox-linux-systemd.sh"
+    # Override _is_wsl2 for deterministic tests across host kinds.
+    # Default native (return 1) keeps existing test expectations unchanged.
+    # Issue #90 / Unit 001.
+    _is_wsl2() { '"$_wsl_override"'; }
     _setup_sandbox
     echo "=== APPARMOR ==="
     cat "$_tmpdir/apparmor-profile"
@@ -651,6 +656,8 @@ run_in_apparmor_sandbox() {
     # Override _load to fail (simulates no sudo access)
     _load_apparmor_profile() { _APPARMOR_PROFILE_LOADED=""; return 1; }
     . "'"$JAILRUN_LIB"'/platform/sandbox-linux-systemd.sh"
+    # Force native path for deterministic PrivateDevices assertion.
+    _is_wsl2() { return 1; }
     _setup_sandbox
     cat "$_tmpdir/systemd-props"
   ' 2>/dev/null
@@ -658,4 +665,53 @@ run_in_apparmor_sandbox() {
   [[ "$output" == *"ProtectSystem=strict"* ]]
   [[ "$output" == *"ProtectHome=read-only"* ]]
   [[ "$output" != *"AppArmorProfile="* ]]
+}
+
+# --- PTY device rules (Issue #90 / Unit 001) ---
+
+@test "apparmor profile allows PTY ptmx device" {
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  # /dev/ptmx is root:root owned (devpts multiplexer); rule must NOT use
+  # `owner` modifier or non-root agents would be denied (regression of #90).
+  [[ "$_aa" == *"  /dev/ptmx rw,"* ]]
+  [[ "$_aa" != *"owner /dev/ptmx"* ]]
+}
+
+@test "apparmor profile allows devpts directory" {
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  # /dev/pts/ directory inode is root-owned; must not be `owner`-qualified.
+  [[ "$_aa" == *"  /dev/pts/ rw,"* ]]
+  [[ "$_aa" != *"owner /dev/pts/ "* ]]
+}
+
+@test "apparmor profile allows devpts subentries with owner restriction" {
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  # /dev/pts/** (allocated PTYs) become owned by the caller; `owner`
+  # restricts cross-user PTY access (security hardening).
+  [[ "$_aa" == *"  owner /dev/pts/** rw,"* ]]
+}
+
+@test "apparmor profile preserves existing deny rules (regression)" {
+  # Provide values for paths the deny rules reference so generation runs
+  # through the same branches as the existing tests; check representative
+  # deny rules are still emitted after PTY rule insertion.
+  _SANDBOX_DENY_READ_PATHS="/home/testuser/.aws"
+  CONFIG_DIR="$HOME/.config/jailrun-regress"
+  export CONFIG_DIR
+  run_setup_with_apparmor
+  [ "$status" -eq 0 ]
+  _aa=$(get_apparmor)
+  # Existing deny rules must remain after the PTY addition.
+  [[ "$_aa" == *"deny \"/home/testuser/.aws/\" r,"* ]]
+  [[ "$_aa" == *"deny \"/home/testuser/.aws/**\" r,"* ]]
+  [[ "$_aa" == *"deny \"$CONFIG_DIR/\" w,"* ]]
+  [[ "$_aa" == *"deny \"$CONFIG_DIR/**\" w,"* ]]
+  [[ "$_aa" == *"deny /run/user/*/bus rw,"* ]]
+  unset CONFIG_DIR
 }

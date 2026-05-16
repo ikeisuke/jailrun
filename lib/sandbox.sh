@@ -396,7 +396,9 @@ _start_proxy() {
       fi
       ;;
   esac
-  _proxy_should_start || return
+  # "proxy not enabled / no domains" is a normal skip path.
+  # Return success here; otherwise caller (under set -e) aborts before agent exec.
+  _proxy_should_start || return 0
 
   # Convert space-separated to comma-separated for proxy.py
   _domains=$(printf '%s' "$PROXY_ALLOW_DOMAINS" | tr ' ' ',')
