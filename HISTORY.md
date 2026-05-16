@@ -1,12 +1,12 @@
 # Change History
 
-## v0.4.2 — WSL2 PTY allocation 失敗の sandbox 側修正 + `_start_proxy` proxy skip regression 修正（patch リリース） (2026-05-16)
+## v0.4.2 — WSL2 PTY allocation 失敗の sandbox 側修正 + `_start_proxy` proxy skip regression 修正（patch リリース） (2026-05-17)
 
 WSL2 環境で AI コーディングエージェント TUI の **直接シェル実行系**（`!ls` のような bash mode / `!` プレフィックス）が `Application Error: Failed to open PTY` で死ぬ Issue #90 を sandbox 側で根本対策する patch リリース。systemd-run の `PrivateDevices=yes` が WSL2 で devpts を正しくマウントせず子プロセスの PTY 確保が失敗する問題に対し、WSL2 検出時のみ `PrivateDevices=yes` を省略しつつ AppArmor profile に PTY device rule（`/dev/ptmx` / `/dev/pts/` / `owner /dev/pts/**`、最後のみ caller 所有 PTY 限定の owner 修飾子）を追加して PTY 可用性を回復させた（Unit 001）。
 
 サイクル進行中にユーザー手動報告（`bash -x bin/jailrun claude --version` トレース）で発見した `lib/sandbox.sh` の `_start_proxy` 内 critical regression（`_proxy_should_start || return` が `set -e` 下で exit code 1 を伝播し agent 起動前に abort する）を 1 行修正（`return 0` 化）で解消（Unit 003、サイクル中拡張として Intent 項目 6 に正式化）。HISTORY / README は本 Unit 002 で WSL2 trade-off の明示と共に反映。
 
-PR: {{PR_URL}}
+PR: https://github.com/ikeisuke/jailrun/pull/91
 
 ### Changes
 
