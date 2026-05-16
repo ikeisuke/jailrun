@@ -37,6 +37,22 @@ _build_apparmor_profile() {
     echo '  /** r,'
     echo '  /** ix,'
 
+    echo ''
+    echo '  # PTY device access (nested PTY allocation for child processes).'
+    echo '  # Required by both WSL2 (host devpts) and native Linux (lefthook'
+    echo '  # → biome, agent TUI `!ls` shell pass-through). Minimum surface:'
+    echo '  # - /dev/ptmx is root:root owned (the multiplexer everyone opens to'
+    echo '  #   allocate a new PTY); `owner` would deny non-root agents, so it'
+    echo '  #   is unqualified.'
+    echo '  # - /dev/pts/ directory is also root:root owned (devpts root inode);'
+    echo '  #   unqualified for listing/lookup.'
+    echo '  # - /dev/pts/** entries (allocated PTYs) become owned by the caller'
+    echo '  #   that opened ptmx, so `owner` restricts cross-user PTY access.'
+    echo '  # Issue #90 / Unit 001 (`owner` hardening on pts/** from code review).'
+    echo '  /dev/ptmx rw,'
+    echo '  /dev/pts/ rw,'
+    echo '  owner /dev/pts/** rw,'
+
     _OLD_IFS="$IFS"; IFS="
 "
     echo ''

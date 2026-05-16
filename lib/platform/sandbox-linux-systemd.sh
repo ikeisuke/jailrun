@@ -7,6 +7,21 @@
 #           $_git_common_dir, $_other_worktrees
 # Provides: _setup_sandbox(), _build_sandbox_exec()
 
+# Detect WSL2 host (Intent SoT: lowercase uname -r matches microsoft|wsl2).
+# Empty / failed uname -> exit 1 (treat as native). LC_ALL=C pins tr locale
+# (ASCII-only patterns). Variables scoped via `local` to avoid global leak.
+# Issue #90 / Unit 001.
+_is_wsl2() {
+  local _wsl_release _wsl_release_lc
+  _wsl_release=$(uname -r 2>/dev/null) || return 1
+  [ -n "$_wsl_release" ] || return 1
+  _wsl_release_lc=$(printf '%s' "$_wsl_release" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+  case "$_wsl_release_lc" in
+    *microsoft*|*wsl2*) return 0 ;;
+    *)                  return 1 ;;
+  esac
+}
+
 _setup_sandbox() {
   local _cwd="$PWD"
   _detect_git_worktree
@@ -30,7 +45,14 @@ _setup_sandbox() {
     # Device restrictions — PrivateDevices=yes creates a minimal /dev with
     # properly mounted devpts (ptmxmode=666), allowing PTY allocation for
     # child processes (e.g. lefthook → biome).
-    echo '-p PrivateDevices=yes'
+    # WSL2 exception: devpts is not properly mounted under PrivateDevices=yes
+    # on WSL2, causing nested PTY allocation failure (Application Error in
+    # agent TUIs on `!ls`). Omit on WSL2 to restore PTY availability; the
+    # accompanying AppArmor PTY rules in sandbox-linux-apparmor.sh allow
+    # devpts access regardless of host kind. Issue #90 / Unit 001.
+    if ! _is_wsl2; then
+      echo '-p PrivateDevices=yes'
+    fi
     # Process and IPC isolation
     echo '-p PrivateUsers=yes'
     echo '-p PrivateMounts=yes'
