@@ -198,6 +198,35 @@ sudo ip netns exec agentns iptables -L OUTPUT -v -n | grep dpts   # confirm
 jailrun does **not** auto-migrate the namespace at runtime (this would
 require sudo every launch); the manual re-setup above is the only path.
 
+#### WSL2 netns topology validation (v0.4.3+)
+
+v0.4.3 以降、`scripts/wsl2-netns-setup.sh` は既存の `veth-host` を検出した
+場合にトポロジー検証 3 段を実施します:
+
+1. **peer の root NS 不在**: `veth-agent` が root namespace 側に残っていないか
+2. **namespace 所属**: `veth-agent` が `agentns` namespace 内に正しく存在するか
+3. **IP 厳密一致**: `veth-host` に SoT が定める `10.200.0.1/24` が割り当たっているか
+
+部分失敗（例: 過去の setup が中断して `veth` だけ残っている / IP が剥がれている）
+を検出した場合は、自動修復を試みず以下のメッセージを stderr に出力して
+`exit 1` で安全停止します:
+
+```text
+[veth] inconsistent state detected: <reason>. Run 'sudo scripts/wsl2-netns-teardown.sh' and re-run setup.
+```
+
+復旧手順:
+
+```bash
+sudo scripts/wsl2-netns-teardown.sh
+sudo scripts/wsl2-netns-setup.sh
+```
+
+正常パス（`veth` が存在せず新規作成 / 検証が全段成功する既存利用）では従来通り
+冪等な skip / 作成挙動を維持します。詳細な検出ロジックと不整合 3 パターンの
+bats テストは Issue [#87](https://github.com/ikeisuke/jailrun/issues/87) を
+参照してください。
+
 #### SoT change follow-up contract
 
 If you ever change `JAILRUN_PROXY_PORT_RANGE_*` in `lib/netns-const.sh`,
