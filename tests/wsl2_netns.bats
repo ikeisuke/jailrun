@@ -33,6 +33,21 @@ setup() {
   _agent_ip="10.200.0.2"
 }
 
+# Cycle v0.4.3 / Unit 002: ensure every @test starts and ends in a clean
+# topology. Existing root-gated tests call "$_teardown" explicitly; this
+# global teardown() is therefore an idempotent no-op for them but guarantees
+# the new @test cases (which intentionally create partial residue to drive
+# the validation branches) do not leak state into later cases even on bats
+# failure. The "|| true" guards cover macOS / non-privileged runners where
+# `ip` is missing entirely.
+teardown() {
+  if command -v ip >/dev/null 2>&1; then
+    ip netns del "$_ns" 2>/dev/null || true
+    ip link del "$_veth_host" 2>/dev/null || true
+    ip link del "$_veth_agent" 2>/dev/null || true
+  fi
+}
+
 # Gate behavioural netns tests: need root + iproute2. Skip otherwise so the
 # suite stays green on unprivileged CI (a dedicated privileged test env is
 # explicitly out of scope for this cycle).
@@ -234,5 +249,66 @@ _netns_gate_or_skip() {
   run timeout 3 bash -c 'exec 3<>/dev/tcp/'"$_agent_ip"'/9999'
   [ "$status" -ne 0 ]
   [ "$status" -eq 124 ]
+  "$_teardown"
+}
+
+# --- Cycle v0.4.3 / Unit 002 / Issue #87 ---
+# veth-host topology validation: setup must abort with a teardown hint when
+# the existing veth-host does not match the SoT topology. Three validations:
+# (1) peer must not be in root NS, (2) peer must be in $NS, (3) host IP must
+# match. Each case seeds a single inconsistency and asserts exit 1 + the
+# canonical stderr reason + teardown guidance. All three are root + iproute2
+# gated and rely on the global teardown() for cleanup.
+
+@test "setup aborts when veth-agent already lives in the root namespace" {
+  _netns_gate_or_skip
+  ip netns del "$_ns" 2>/dev/null || true
+  ip link del "$_veth_host" 2>/dev/null || true
+  ip link del "$_veth_agent" 2>/dev/null || true
+  # Build a self-consistent setup first so validations 2/3 would pass.
+  run "$_setup"
+  [ "$status" -eq 0 ]
+  # Then plant a stray "$_veth_agent" in the root namespace to trigger 1.
+  ip link add "${_veth_agent}-stray" type veth peer name "$_veth_agent"
+  run "$_setup"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"inconsistent state detected: peer $_veth_agent unexpectedly present in root namespace"* ]]
+  [[ "$output" == *"Run 'sudo scripts/wsl2-netns-teardown.sh' and re-run setup."* ]]
+  ip link del "${_veth_agent}-stray" 2>/dev/null || true
+  ip link del "$_veth_agent" 2>/dev/null || true
+  "$_teardown"
+}
+
+@test "setup aborts when veth-agent peer is not inside the namespace" {
+  _netns_gate_or_skip
+  ip netns del "$_ns" 2>/dev/null || true
+  ip link del "$_veth_host" 2>/dev/null || true
+  ip netns del netns-other-mock 2>/dev/null || true
+  # Place the agent end in a different (still-alive) netns so validation 1
+  # cannot fire (root has no $_veth_agent) but validation 2 must
+  # (`ip netns exec $_ns ip link show $_veth_agent` fails).
+  ip netns add netns-other-mock
+  ip link add "$_veth_host" type veth peer name "$_veth_agent"
+  ip link set "$_veth_agent" netns netns-other-mock
+  ip netns add "$_ns"
+  run "$_setup"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"inconsistent state detected: peer $_veth_agent not in namespace $_ns"* ]]
+  [[ "$output" == *"Run 'sudo scripts/wsl2-netns-teardown.sh' and re-run setup."* ]]
+  ip netns del netns-other-mock 2>/dev/null || true
+}
+
+@test "setup aborts when veth-host has no host IP assigned" {
+  _netns_gate_or_skip
+  ip netns del "$_ns" 2>/dev/null || true
+  ip link del "$_veth_host" 2>/dev/null || true
+  # Build a self-consistent setup, then strip the host IP to trigger 3.
+  run "$_setup"
+  [ "$status" -eq 0 ]
+  ip addr flush dev "$_veth_host"
+  run "$_setup"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"inconsistent state detected: host IP $_host_ip missing on $_veth_host"* ]]
+  [[ "$output" == *"Run 'sudo scripts/wsl2-netns-teardown.sh' and re-run setup."* ]]
   "$_teardown"
 }
