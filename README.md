@@ -78,6 +78,38 @@ AGENT_AWS_PROFILES  →  AWS_PROFILE  →  DEFAULT_AWS_PROFILE in config
 (highest)              (shell env)      (fallback)
 ```
 
+### Per-directory overrides (`[dir."..."]`)
+
+`[dir."<path>"]` sections apply when the working directory matches the key
+exactly or as a path prefix. The key supports `~` and `$VAR` / `${VAR}`
+expansion (v0.5.0+), so the same config works across users / machines:
+
+```toml
+[dir."~/repos/myproj"]            # expands to /Users/<you>/repos/myproj
+profile = "ml-dev"
+
+[dir."$HOME/work/internal"]       # also supported
+sandbox_extra_allow_write = ["~/datasets"]
+
+[dir."/abs/legacy/path"]          # absolute paths keep working (backward compat)
+profile = "restricted"
+```
+
+Notes:
+
+- `~user` (other-user home) is not supported; only `~/...` (current user).
+- Keys whose expansion still contains an unresolved `$VAR` / `${VAR}` (i.e.,
+  the env var is not set) are silently skipped to avoid accidental matches.
+- macOS APFS case-insensitivity is not normalized; match is byte-exact.
+
+### Internal: config envelope between Python and shell
+
+`lib/config_cli.py load` emits a `KEY=encoded_value` envelope (one entry per
+line) which `lib/config.sh::load_config` reads via `while read` + `awk` and
+exports without `eval` (v0.5.0+ / Issue #48). The encoding escapes `\` and
+LF only; values cannot carry NUL. This is an internal contract; users editing
+`config.toml` are not affected.
+
 ### GitHub PAT Setup
 
 See [docs/github-pat-setup.md](docs/github-pat-setup.md).

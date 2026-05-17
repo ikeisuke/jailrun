@@ -8,6 +8,7 @@ functionality. For the CLI interface, see config_cli.py.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import copy
 from pathlib import Path
@@ -244,16 +245,24 @@ def resolve_config(app: str = "", directory: str = "") -> dict:
         app_settings = {k: v for k, v in app_conf.items() if k != "profile"}
 
     # Layer 3: [dir."<path>"] -> may override profile
+    # Supports ~ / $HOME expansion in keys (Issue #55).
+    # Keys whose expansion still contains an unresolved $VAR / ${VAR} are
+    # skipped to avoid false matches against undefined env vars. A literal
+    # "$" in a path (without VAR-name characters) is allowed.
     dir_conf = {}
     if directory and "dir" in raw:
-        # Find matching dir (exact match or longest prefix)
-        best_match = ""
+        best_match_expanded = ""
+        best_match_key = ""
         for dir_key in raw["dir"]:
-            if directory == dir_key or directory.startswith(dir_key.rstrip("/") + "/"):
-                if len(dir_key) > len(best_match):
-                    best_match = dir_key
-        if best_match:
-            dir_conf = raw["dir"][best_match]
+            expanded = os.path.expanduser(os.path.expandvars(dir_key))
+            if _UNDEFINED_VAR_RE.search(expanded):
+                continue
+            if directory == expanded or directory.startswith(expanded.rstrip("/") + "/"):
+                if len(expanded) > len(best_match_expanded):
+                    best_match_expanded = expanded
+                    best_match_key = dir_key
+        if best_match_key:
+            dir_conf = raw["dir"][best_match_key]
             if "profile" in dir_conf:
                 profile_name = dir_conf["profile"]
 
@@ -298,24 +307,56 @@ def resolve_config(app: str = "", directory: str = "") -> dict:
 # Shell output
 # ---------------------------------------------------------------------------
 
+# Patterns used by the shell envelope (Issue #48 / #55).
+_SHELL_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_UNDEFINED_VAR_RE = re.compile(r"\$(?:\{[A-Za-z_]\w*\}?|[A-Za-z_]\w*)")
+
+
 def shell_escape(value: str) -> str:
-    """Escape a string for safe embedding in double-quoted shell context."""
+    """Escape a string for safe embedding in double-quoted shell context.
+
+    Retained for backward compatibility. Not used by ``to_shell()`` since
+    Unit 003 (Issue #48) switched the output format to key=value with
+    backslash/newline escaping (see ``_encode_value``).
+    """
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
 
 
+def _encode_value(value: str) -> str:
+    """Encode a value for the key=value shell envelope (Issue #48).
+
+    Escape ``\\`` and ``LF`` only; everything else is emitted verbatim.
+    Trailing newlines are stripped (ShellSafeString invariant: shell
+    variables cannot represent trailing LF anyway).
+    """
+    if "\x00" in value:
+        raise ValueError("NUL character is not allowed in config values")
+    return value.rstrip("\n").replace("\\", "\\\\").replace("\n", "\\n")
+
+
 def to_shell(config: dict) -> str:
-    """Convert config dict to shell-eval format (KEY="value")."""
+    """Convert config dict to shell key=value envelope (Issue #48).
+
+    Output format: one ``KEY=encoded_value`` per line. The shell side
+    (``lib/config.sh::load_config``) decodes ``\\n`` -> LF and ``\\\\`` -> ``\\``
+    using awk in a single scan, then ``export``s each entry. ``eval`` is
+    no longer used.
+    """
     lines = []
-    # Map TOML keys to shell variable names (uppercase)
     for key, value in config.items():
         shell_key = key.upper()
+        if not _SHELL_KEY_RE.match(shell_key):
+            raise ValueError(
+                f"invalid shell key after upper(): {shell_key!r} "
+                f"(must match [A-Z][A-Z0-9_]*)"
+            )
         if isinstance(value, list):
             shell_val = " ".join(value)
         elif isinstance(value, bool):
             shell_val = "1" if value else ""
         else:
             shell_val = str(value)
-        lines.append(f'{shell_key}="{shell_escape(shell_val)}"')
+        lines.append(f"{shell_key}={_encode_value(shell_val)}")
     return "\n".join(lines)
 
 

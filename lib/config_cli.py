@@ -2,7 +2,9 @@
 """jailrun configuration CLI.
 
 Subcommands:
-    load   --app NAME --dir PATH   Merge config and output shell-eval format
+    load   --app NAME --dir PATH   Merge config and emit KEY=encoded_value
+                                   envelope (one entry per line, consumed by
+                                   lib/config.sh without eval — Issue #48)
     show                            Display current config values
     set    KEY VALUE                Update a config key
     set    --append KEY VALUE       Add a value to a list key
