@@ -1,7 +1,7 @@
 # AI-DLC プロジェクト設定
 # 生成日: 2026-03-28
 
-starter_kit_version = "2.5.1"
+starter_kit_version = "2.6.3"
 
 [project]
 name = "jailrun"
@@ -89,6 +89,7 @@ command = "npx markdownlint-cli2"
 # - false: フィードバック送信機能を無効化（企業利用時のセキュリティ対策）
 enabled = true
 upstream_repo = "ikeisuke/ai-dlc-starter-kit"
+open_in_browser = false
 
 [rules.automation]
 # 自動化設定（v1.18.0で追加）
