@@ -6,7 +6,7 @@
 
 `lib/proxy.py` の `_bind_in_range` に潜む TOCTOU race を緩和し、N=10 並列環境で `tests/proxy_parallel_availability.bats` が 5 iteration × 5 回連続 0 fail で安定 pass する状態に到達させた（Unit 001 / Issue #92）。WSL2 `netns setup` には `veth-host` トポロジー検証 3 段（peer 不在 / namespace 所属 / IP 厳密一致）を追加し、部分失敗時の冪等性破綻を「明示エラー + teardown 案内」で安全停止する構造に変更した（Unit 002 / Issue #87）。`Makefile` install ターゲットでは `lib/platform/*.sh` の個別列挙を `$(foreach ...)` パターン install に置換し、新規 platform スクリプト追加時の install 漏れ事故を構造的に防止する（Unit 003 / Issue #79）。
 
-PR: https://github.com/ikeisuke/jailrun/pull/<TBD>
+PR: https://github.com/ikeisuke/jailrun/pull/96
 
 ### Changes
 
