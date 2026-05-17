@@ -1,5 +1,28 @@
 # Change History
 
+## v0.4.4 — Unit 分割ガイドラインを .aidlc/rules.md に追加（docs only / AI-DLC 運用改善） (2026-05-17)
+
+v0.4.3 の retrospective で確認された「単一 Unit に検証次元（NFR latency / 並行性 race / テスト基盤の並列 bats 戦略）が同時集中するとレビュー負荷と defer 起票が増える」事象を再発防止するためのガイドラインを `.aidlc/rules.md` に追加した docs only リリース。`lib/` / `bin/` / `tests/` / CI / 配布物に変更はなく、runtime 挙動・配布バイナリ・CI 結果に影響しない（Unit 001 / Issue #97）。
+
+ガイドライン本体は「3 つの検証次元（NFR 検証 / 並行性検証 / テスト基盤）」の判定基準と具体例 / 非該当例、該当数による分割推奨ルール（0–1 は単一 Unit 可 / 2 以上は分割検討）、分割困難時の例外ルート（B-1a / B-1b の適用条件・記載先・書式・2 サイクル連続使用時の Operations 振り返り議題化義務）、Inception Phase 限定の適用フェーズ宣言、既存 2 セクション（`## ファイル管理方針` / `## 振り返りの進め方`）との直交性記述、Issue #97 / v0.4.3 retrospective へのトレーサビリティで構成される。本 Unit 自身を「検証次元すべて非該当 → 単一 Unit 可」のセルフ適用例として位置付けた（Unit 定義ファイル「検証次元評価」節）。
+
+PR: https://github.com/ikeisuke/jailrun/pull/<TBD>
+
+### Changes
+
+#### Documentation
+
+- **`.aidlc/rules.md`**（Unit 001 / Issue #97）: 末尾に `## Unit 分割ガイドライン` セクション 109 行を追加（既存 2 セクション無編集 / 約 3912 字）。背景（v0.4.3 サイクルの Unit 001 集中事象）→ 3 検証次元の判定基準（NFR / 並行性 / テスト基盤）と具体例・非該当例 → 該当次元数による分割判定ルール（should レベル）→ 例外ルート（B-1a / B-1b、記載先と書式テンプレート、2 サイクル連続使用検出による振り返り議題化）→ 他 defer ルートとの区別（Construction Phase の `OUT_OF_SCOPE` / `TECHNICAL_BLOCKER` との混同防止）→ 他ルール整合（Inception Phase 限定、既存 2 セクションとの直交性、想定衝突ケースの予防）→ 関連リンク（#97 / v0.4.3 retrospective 文脈の正規参照先理由）の章立てで構成。
+
+#### Production / Tests / CI
+
+変更なし（docs only）。
+
+### Known issues / Follow-ups
+
+- ガイドラインの実運用効果（検証次元識別率 / defer 起票数低減 / レビューラウンド数）は次サイクル以降の Inception Phase で観測
+- 例外ルートの 2 サイクル連続使用検出を自動チェック化するかは別 Issue（バックログ候補）
+
 ## v0.4.3 — proxy bind race / netns setup 検証 / Makefile install パターン化（patch リリース） (2026-05-17)
 
 並列環境での flaky test 撲滅・WSL2 `netns setup` の冪等性堅牢化・配布漏れの構造的防止という 3 つの運用品質改善を束ねた patch リリース。
