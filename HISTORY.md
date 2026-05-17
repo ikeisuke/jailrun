@@ -1,5 +1,37 @@
 # Change History
 
+## v0.4.3 — proxy bind race / netns setup 検証 / Makefile install パターン化（patch リリース） (2026-05-17)
+
+並列環境での flaky test 撲滅・WSL2 `netns setup` の冪等性堅牢化・配布漏れの構造的防止という 3 つの運用品質改善を束ねた patch リリース。
+
+`lib/proxy.py` の `_bind_in_range` に潜む TOCTOU race を緩和し、N=10 並列環境で `tests/proxy_parallel_availability.bats` が 5 iteration × 5 回連続 0 fail で安定 pass する状態に到達させた（Unit 001 / Issue #92）。WSL2 `netns setup` には `veth-host` トポロジー検証 3 段（peer 不在 / namespace 所属 / IP 厳密一致）を追加し、部分失敗時の冪等性破綻を「明示エラー + teardown 案内」で安全停止する構造に変更した（Unit 002 / Issue #87）。`Makefile` install ターゲットでは `lib/platform/*.sh` の個別列挙を `$(foreach ...)` パターン install に置換し、新規 platform スクリプト追加時の install 漏れ事故を構造的に防止する（Unit 003 / Issue #79）。
+
+PR: https://github.com/ikeisuke/jailrun/pull/96
+
+### Changes
+
+#### Production
+
+- **`lib/proxy.py`**（Unit 001 / Issue #92）: `_bind_in_range` を `_scan_once`（機構: ポート範囲を sequential scan して空きを 1 つ確保 / `EADDRINUSE` のみ吸収）と `_bind_in_range`（制御: scan 全域失敗時に最大 3 回 retry）に責務分離。retry 間に整数 ms の jitter sleep（5–30ms）を挿入し、累計待機 budget 100ms を超過しない範囲で並列プロセスの bind window を decorrelate する。非競合系 `OSError` は即時 raise（fail-fast）、retry 失敗時の `RuntimeError` は `__cause__` に最後の `EADDRINUSE` を保持して原因連鎖を明示。proxy 起動 latency は修正前比 +15ms（NFR +50ms 以内）。
+- **`scripts/wsl2-netns-setup.sh`**（Unit 002 / Issue #87）: `veth-host` 既存判定ブロックの直後にトポロジー検証 3 段を追加。Validation 1（peer の root NS 不在: `ip link show "$VETH_AGENT"` exit != 0）/ Validation 2（namespace 所属: `ip netns exec "$NS" ip link show "$VETH_AGENT"` 成功）/ Validation 3（IP 厳密一致: `ip -o -4 addr show dev "$VETH_HOST" | awk '{print $4}' | grep -Fxq "$HOST_IP/24"`）のいずれかが不整合な場合、`[veth] inconsistent state detected: <reason>. Run 'sudo scripts/wsl2-netns-teardown.sh' and re-run setup.` を stderr に出力して exit 1 で停止。既存正常パスの skip 挙動は維持。
+- **`Makefile`**（Unit 003 / Issue #79）: `install` ターゲットの `lib/platform/*.sh` 7 件個別行を `$(foreach f,$(wildcard lib/platform/*.sh),install -m 644 "$(f)" "$(DESTDIR)$(PREFIX)/share/jailrun/lib/platform/$(notdir $(f))";)` 1 行のパターン install に置換。配布対象ファイル集合・644 パーミッションは修正前後で完全一致。
+
+#### Tests
+
+- **`tests/proxy_parallel_availability.bats`**（Unit 001 / 回帰防波堤）: pytest ユニットテストは defer（Issue #94 に切り出し）。N=10 並列 × 5 iteration × 5 回連続実行で 0 fail を実機確認し、回帰防波堤として継続採用。
+- **`tests/wsl2_netns.bats`**（Unit 002 / 新規 3 件）: `teardown()` を新規定義し idempotent な cleanup を実現。不整合 3 パターン（`peer_in_root_ns` / `peer_not_in_ns` / `host_ip_missing`）の bats テストを追加（root + iproute2 gated、macOS では skip）。
+- **`tests/makefile_install.bats`**（Unit 003 / 新規 3 件）: 配布全体ファイル集合検証（hardcoded 期待 25 ファイル一覧との完全一致）+ `lib/platform/` 配下集合検証（repo SoT との自動同期性）+ 644 パーミッション検証（macOS / Linux 分岐）。AGENTS.md 規約準拠で `cd + make` 形式採用。
+
+#### Documentation
+
+- **`HISTORY.md`**: 本 v0.4.3 セクション追加。
+- **`README.md`**: WSL2 netns セクション内に `#### WSL2 netns topology validation (v0.4.3+)` サブセクションを追加し、部分失敗時の安全停止挙動と teardown / re-setup の復旧フローを明示。
+
+### Known issues / Follow-ups
+
+- Issue #94: proxy `_scan_once` / `_bind_in_range` retry 契約の pytest ユニットテスト追加（Unit 001 由来 defer）
+- Issue #95: 本番での `bind_in_range` retry ログ量評価（Unit 001 由来 defer）
+
 ## v0.4.2 — WSL2 PTY allocation 失敗の sandbox 側修正 + `_start_proxy` proxy skip regression 修正（patch リリース） (2026-05-17)
 
 WSL2 環境で AI コーディングエージェント TUI の **直接シェル実行系**（`!ls` のような bash mode / `!` プレフィックス）が `Application Error: Failed to open PTY` で死ぬ Issue #90 を sandbox 側で根本対策する patch リリース。systemd-run の `PrivateDevices=yes` が WSL2 で devpts を正しくマウントせず子プロセスの PTY 確保が失敗する問題に対し、WSL2 検出時のみ `PrivateDevices=yes` を省略しつつ AppArmor profile に PTY device rule（`/dev/ptmx` / `/dev/pts/` / `owner /dev/pts/**`、最後のみ caller 所有 PTY 限定の owner 修飾子）を追加して PTY 可用性を回復させた（Unit 001）。

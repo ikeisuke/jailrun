@@ -33,14 +33,21 @@ behaviour from v0.4.0.
 from __future__ import annotations
 
 import argparse
+import errno
 import ipaddress
 import logging
+import random
 import select
 import socket
 import sys
 import threading
+import time
 
 from netns_const_loader import load_port_range
+
+_BIND_RETRY_MAX_ATTEMPTS = 3
+_BIND_RETRY_TOTAL_BUDGET_MS = 100
+_BIND_RETRY_JITTER_MS_RANGE = (5, 30)
 
 logger = logging.getLogger("jailrun-proxy")
 
@@ -206,12 +213,14 @@ def handle_client(
             pass
 
 
-def _bind_in_range(bind: str, start: int, end: int) -> socket.socket:
-    """Try sequential bind across [start, end] and return the first success.
+def _scan_once(
+    bind: str, start: int, end: int
+) -> tuple[socket.socket | None, OSError | None]:
+    """Sequential bind scan across [start, end] without retry awareness.
 
-    Mirrors the iptables --dport START:END contract from cycle v0.4.1 /
-    Unit 001: the proxy must never bind outside the SoT range, so the
-    ephemeral path does NOT fall back to OS-assigned ports.
+    Absorbs only EADDRINUSE (race-recoverable). Non-EADDRINUSE OSErrors
+    are re-raised immediately so non-recoverable failures (EACCES,
+    EAFNOSUPPORT, EINVAL, ...) are not hidden behind a retry loop.
     """
     last_error: OSError | None = None
     for candidate in range(start, end + 1):
@@ -219,16 +228,54 @@ def _bind_in_range(bind: str, start: int, end: int) -> socket.socket:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((bind, candidate))
-            return sock
+            return sock, None
         except OSError as exc:
-            last_error = exc
             sock.close()
+            if exc.errno != errno.EADDRINUSE:
+                raise
+            last_error = exc
             continue
-    tried = end - start + 1
+    return None, last_error
+
+
+def _bind_in_range(bind: str, start: int, end: int) -> socket.socket:
+    """Try sequential bind across [start, end] with backoff+retry.
+
+    Mirrors the iptables --dport START:END contract from cycle v0.4.1:
+    the proxy must never bind outside the SoT range, so the ephemeral
+    path does NOT fall back to OS-assigned ports. Cycle v0.4.3 Unit 001
+    adds bounded jittered retry on EADDRINUSE to mitigate the TOCTOU
+    race that affected tests/proxy_parallel_availability.bats #79.
+    """
+    cumulative_sleep_ms = 0
+    last_error: OSError | None = None
+    attempts_done = 0
+    budget_exhausted = False
+    for attempt in range(_BIND_RETRY_MAX_ATTEMPTS):
+        sock, err = _scan_once(bind, start, end)
+        attempts_done = attempt + 1
+        if sock is not None:
+            return sock
+        last_error = err
+        if attempts_done >= _BIND_RETRY_MAX_ATTEMPTS:
+            break
+        sleep_ms = random.randint(*_BIND_RETRY_JITTER_MS_RANGE)
+        if cumulative_sleep_ms + sleep_ms > _BIND_RETRY_TOTAL_BUDGET_MS:
+            budget_exhausted = True
+            break
+        logger.info(
+            "bind_in_range retry %d/%d after %dms",
+            attempts_done,
+            _BIND_RETRY_MAX_ATTEMPTS - 1,
+            sleep_ms,
+        )
+        time.sleep(sleep_ms / 1000)
+        cumulative_sleep_ms += sleep_ms
+    reason = "budget exhausted" if budget_exhausted else "retry limit reached"
     raise RuntimeError(
         f"failed to bind to any port in range [{start}, {end}] "
-        f"(tried {tried}, last error: {last_error})"
-    )
+        f"after {attempts_done} attempts ({reason})"
+    ) from last_error
 
 
 def run_proxy(
