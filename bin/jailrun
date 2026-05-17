@@ -13,7 +13,7 @@
 
 set -eu
 
-VERSION="0.4.4"
+VERSION="0.5.0"
 
 # resolve real path of $0 (macOS lacks readlink -f, use cd+pwd)
 _resolve_path() {
