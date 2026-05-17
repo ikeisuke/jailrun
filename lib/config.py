@@ -58,8 +58,18 @@ KNOWN_KEYS = set(DEFAULTS.keys())
 # Built-in proxy allow domains per agent (merged when proxy is enabled)
 BUILTIN_PROXY_DOMAINS: dict[str, list[str]] = {
     "claude": [
+        # Core API endpoints (Anthropic).
         "api.anthropic.com",
         "statsig.anthropic.com",
+        # Claude Code itself: workspace / plugins traffic and auto-update.
+        "platform.claude.com",
+        "downloads.claude.ai",
+        # claude -> codex passthrough (claude session invoking codex CLI).
+        "chatgpt.com",
+        "ab.chatgpt.com",
+        "api.openai.com",
+        # Telemetry. Uncomment to allow.
+        # "http-intake.logs.us5.datadoghq.com",
     ],
     "codex": [
         "chatgpt.com",
@@ -77,28 +87,38 @@ BUILTIN_PROXY_DOMAINS: dict[str, list[str]] = {
     ],
     # gemini CLI: minimum reach categories per Issue #85 / Intent M3
     #   - auth: Google OAuth flow + account selection
-    #   - api:  Gemini Code Assist + Gemini API endpoints
+    #   - api:  Gemini Code Assist (primary) / Gemini API (direct, API-key path)
     # The exact set is provisional; verify against actual gemini connections
     # (see README "WSL2 network restriction" section for the runtime check).
     "gemini": [
+        # Auth: Google OAuth flow + account selection.
         "accounts.google.com",
         "oauth2.googleapis.com",
-        "generativelanguage.googleapis.com",
+        # API: Gemini Code Assist is the primary path observed in practice.
         "cloudcode-pa.googleapis.com",
+        # Direct Gemini API path (used when an API key is set instead of OAuth).
+        "generativelanguage.googleapis.com",
+        # Telemetry. Uncomment to allow.
+        # "www.google-analytics.com",
     ],
 }
-# Common to every agent: GitHub-family endpoints all CLIs need regardless of
-# vendor. The rationale for keeping these in COMMON (not per-agent):
+# Common to every agent: GitHub-family + npm registry endpoints all CLIs need
+# regardless of vendor. The rationale for keeping these in COMMON (not
+# per-agent):
 #   - github.com               : user-level OAuth flow, repository browsing
 #   - api.github.com           : releases / PR / Issue REST API
 #   - raw.githubusercontent.com: configuration files, release assets, raw
 #                                content fetched by setup / install scripts
+#   - registry.npmjs.org       : npm package fetch invoked by any agent that
+#                                operates on a node project (observed for
+#                                codex, applies equally to claude / gemini)
 # When adding a new agent, only place a domain here if it is genuinely shared
 # by every agent; otherwise put it in BUILTIN_PROXY_DOMAINS[<agent>].
 BUILTIN_PROXY_DOMAINS_COMMON: list[str] = [
     "github.com",
     "api.github.com",
     "raw.githubusercontent.com",
+    "registry.npmjs.org",
 ]
 
 DEFAULT_TOML = """\
