@@ -1,5 +1,37 @@
 # Change History
 
+## v0.5.0 — Proxy default domains 拡張 + proxy retry 契約テスト + config dir 展開 + lib/config.sh eval 排除 + jailrun copilot subcmd 追加 (2026-05-17)
+
+mac 実機で 4 agent（claude / codex / gemini / copilot）の起動と日常運用が一通り回るようにするため、proxy デフォルト ドメイン拡張・proxy retry 契約のテスト固定化・config dir キーの `~` / `$HOME` 展開・`lib/config.sh` の `eval` 排除・`jailrun copilot` subcmd 追加（`--resume` 起動失敗 #67 の修正）を 4 Unit にまとめた minor リリース。
+
+PR: https://github.com/ikeisuke/jailrun/pull/<TBD>
+
+### Changes
+
+#### Production
+
+- **`lib/config.py`**（Unit 001 / Issue #99 / #100）: `BUILTIN_PROXY_DOMAINS["claude"]` に `platform.claude.com` / `downloads.claude.ai` / `chatgpt.com` / `ab.chatgpt.com` / `api.openai.com` を追加し `http-intake.logs.us5.datadoghq.com` を `# Telemetry. Uncomment to allow.` で opt-in 化。`BUILTIN_PROXY_DOMAINS_COMMON` に `registry.npmjs.org` を追加。`BUILTIN_PROXY_DOMAINS["gemini"]` の用途コメントを整理し `www.google-analytics.com` を opt-in 化。
+- **`lib/config.py`**（Unit 003 / Issue #55）: `resolve_config()` の `[dir."..."]` キーマッチで `~` / `$HOME` を `os.path.expanduser` + 環境変数展開で resolve するように変更（Issue #55）。
+- **`lib/config.py` / `lib/config.sh` / `lib/config_cli.py`**（Unit 003 / Issue #48）: Python 側 `config_cli` の出力フォーマットを shell から `eval` で食わせる形式から `KEY=VALUE` 行 + shell 個別読み取り方式へ移行し、`lib/config.sh::load_config` 内の `eval` を完全排除。
+- **`bin/jailrun`**（Unit 004 / Issue #67）: `copilot` subcmd を新規追加し、`copilot --resume` の起動失敗を解消（argv 仮説で根本原因に到達）。
+
+#### Tests
+
+- **`tests/test_proxy_bind_retry.py`**（Unit 002 / Issue #94 / 新規 150 行）: `lib/proxy.py::_scan_once` / `_bind_in_range` の retry 契約（accumulated wait budget / EADDRINUSE 吸収 / 非競合 OSError fail-fast / RuntimeError __cause__ 連鎖）を pytest unit test で固定。v0.4.3 defer 分の回収。
+- **`tests/config.bats`**（Unit 003 / 新規 144 行）: `[dir."..."]` キー展開と `load_config` eval 排除後の挙動を bats から検証。
+- **`tests/test_config.py` / `tests/test_config_dir_expand.py` / `tests/test_config_cli.py`**（Unit 003 / 追加・更新）: dir 展開ロジックと `config_cli` 出力フォーマットの単体検証を pytest 側でカバー。
+- **`tests/copilot_args.bats` / `tests/jailrun.bats`**（Unit 004 / 新規 + 拡張）: `copilot` subcmd の argv 解釈と `--resume` フローの regression を bats で固定。
+
+#### Documentation
+
+- **`README.md`**: 各 Unit の差分（追加 proxy ドメイン / dir 展開挙動 / `jailrun copilot` 利用例）を反映。
+- **`HISTORY.md`**: 本 v0.5.0 セクション追加。
+
+### Known issues / Follow-ups
+
+- Issue #95: production 環境での `bind_in_range` retry ログ量観測継続（Unit 002 で観測基盤導入済 / 観測結果次第で次サイクル以降に方針反映）
+- Issue #101 / #102: telemetry opt-in 値のデータ構造化 / `bin/jailrun` subcmd レジストリの単一情報源化（type:defer-from-review / v0.6.0+ 候補）
+
 ## v0.4.4 — Unit 分割ガイドラインを .aidlc/rules.md に追加（docs only / AI-DLC 運用改善） (2026-05-17)
 
 v0.4.3 の retrospective で確認された「単一 Unit に検証次元（NFR latency / 並行性 race / テスト基盤の並列 bats 戦略）が同時集中するとレビュー負荷と defer 起票が増える」事象を再発防止するためのガイドラインを `.aidlc/rules.md` に追加した docs only リリース。`lib/` / `bin/` / `tests/` / CI / 配布物に変更はなく、runtime 挙動・配布バイナリ・CI 結果に影響しない（Unit 001 / Issue #97）。

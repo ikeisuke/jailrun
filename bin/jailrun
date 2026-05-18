@@ -5,7 +5,7 @@
 # Launch AI coding agents with credential isolation + OS sandbox
 #
 # Usage: jailrun <command> [args...]
-# Commands: claude, codex, gemini, kiro-cli, kiro-cli-chat, token, ruleset, config
+# Commands: claude, codex, gemini, kiro-cli, kiro-cli-chat, copilot, token, ruleset, config
 #
 # Environment:
 #   AGENT_AWS_PROFILES=x   specify AWS profiles (space-separated)
@@ -13,7 +13,7 @@
 
 set -eu
 
-VERSION="0.4.4"
+VERSION="0.5.0"
 
 # resolve real path of $0 (macOS lacks readlink -f, use cd+pwd)
 _resolve_path() {
@@ -41,7 +41,7 @@ _subcmd="${1:-}"
 shift 2>/dev/null || true
 
 case "$_subcmd" in
-  claude|codex|gemini|kiro-cli|kiro-cli-chat)
+  claude|codex|gemini|kiro-cli|kiro-cli-chat|copilot)
     WRAPPER_NAME="$_subcmd"
     . "$JAILRUN_LIB/agent-wrapper.sh"
     ;;
@@ -64,6 +64,7 @@ Commands:
   gemini              launch Gemini CLI
   kiro-cli            launch Kiro CLI
   kiro-cli-chat       launch Kiro CLI Chat
+  copilot             launch GitHub Copilot CLI
   token               token management (add, rotate, delete, list)
   config              config management (show, set, edit, path, init)
   ruleset             create GitHub repository rulesets

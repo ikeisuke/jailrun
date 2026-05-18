@@ -37,3 +37,10 @@
   [ "$status" -eq 1 ]
   [[ "$output" == *"unknown subcommand"* ]]
 }
+
+@test "jailrun --help lists copilot command" {
+  run bin/jailrun --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"copilot"* ]]
+  [[ "$output" == *"GitHub Copilot CLI"* ]]
+}

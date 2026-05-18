@@ -59,12 +59,81 @@ class BuiltinProxyDomainsTests(unittest.TestCase):
             self.assertGreater(len(config.BUILTIN_PROXY_DOMAINS[app]), 0,
                                f"{app} entry must remain non-empty")
 
-    def test_common_unchanged_set(self):
-        # COMMON list (values, not comments) must remain the GitHub trio.
+    def test_codex_contract(self):
+        # v0.5.0 Unit 001: codex entry was *not* touched (registry.npmjs.org
+        # was promoted to COMMON instead). Pin the exact set to detect
+        # accidental over- or under-permission in this entry.
+        self.assertEqual(
+            set(config.BUILTIN_PROXY_DOMAINS["codex"]),
+            {"chatgpt.com", "ab.chatgpt.com", "api.openai.com"},
+        )
+
+    def test_kiro_cli_contract(self):
+        # v0.5.0 Unit 001: kiro-cli entry was not touched. Pin the exact set
+        # so any unintended addition / removal is caught by tests.
+        self.assertEqual(
+            set(config.BUILTIN_PROXY_DOMAINS["kiro-cli"]),
+            {
+                "*.kiro.dev",
+                "q.us-east-1.amazonaws.com",
+                "q.eu-central-1.amazonaws.com",
+                "desktop-release.q.us-east-1.amazonaws.com",
+                "cognito-identity.us-east-1.amazonaws.com",
+                "oidc.ap-northeast-1.amazonaws.com",
+                "client-telemetry.us-east-1.amazonaws.com",
+            },
+        )
+
+    def test_common_contract(self):
+        # COMMON contract (values, not comments). Updated v0.5.0 Unit 001:
+        # registry.npmjs.org was promoted from per-agent into COMMON because
+        # node-project operations are needed across every agent.
         self.assertEqual(
             set(config.BUILTIN_PROXY_DOMAINS_COMMON),
-            {"github.com", "api.github.com", "raw.githubusercontent.com"},
+            {
+                "github.com",
+                "api.github.com",
+                "raw.githubusercontent.com",
+                "registry.npmjs.org",
+            },
         )
+
+    def test_claude_contract(self):
+        # v0.5.0 Unit 001 / Issue #99: claude entry final set. Pinning the
+        # full set guards against unintended over-permission as well as the
+        # documented additions (parity with codex / kiro-cli contract tests).
+        self.assertEqual(
+            set(config.BUILTIN_PROXY_DOMAINS["claude"]),
+            {
+                "api.anthropic.com",
+                "statsig.anthropic.com",
+                "platform.claude.com",
+                "downloads.claude.ai",
+                "chatgpt.com",
+                "ab.chatgpt.com",
+                "api.openai.com",
+            },
+        )
+
+    def test_common_has_no_duplicates(self):
+        # COMMON list must remain duplicate-free; merger relies on this.
+        self.assertEqual(
+            len(config.BUILTIN_PROXY_DOMAINS_COMMON),
+            len(set(config.BUILTIN_PROXY_DOMAINS_COMMON)),
+        )
+
+    def test_telemetry_opt_in_excluded(self):
+        # Telemetry endpoints are commented out in source ("opt-in"); they must
+        # not appear as runtime list values until the user uncomments them.
+        all_values: set[str] = set(config.BUILTIN_PROXY_DOMAINS_COMMON)
+        for app_domains in config.BUILTIN_PROXY_DOMAINS.values():
+            all_values.update(app_domains)
+        for d in ("http-intake.logs.us5.datadoghq.com", "www.google-analytics.com"):
+            self.assertNotIn(
+                d,
+                all_values,
+                f"telemetry endpoint {d} must remain opt-in (commented out in source)",
+            )
 
 
 class ResolveConfigMergeTests(unittest.TestCase):

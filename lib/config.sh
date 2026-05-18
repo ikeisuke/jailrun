@@ -29,15 +29,29 @@ fi
 _GH_TOKEN_NAME_OVERRIDE="${GH_TOKEN_NAME:-}"
 _SANDBOX_PASSTHROUGH_ENV_OVERRIDE="${SANDBOX_PASSTHROUGH_ENV:-}"
 
-# load config via Python (outputs shell-eval format)
+# load config via Python (outputs KEY=encoded_value envelope; no eval — Issue #48)
 if [ -f "$CONFIG_FILE" ]; then
   _config_output="$(python3 "$JAILRUN_LIB/config_cli.py" load --app "$_WRAPPER_NAME" --dir "$PWD")"
   if [ $? -ne 0 ]; then
     echo "[$_WRAPPER_NAME] config error — aborting (check $CONFIG_FILE)" >&2
     exit 1
   fi
-  eval "$_config_output"
-  unset _config_output
+  # Decode each KEY=encoded_value line and export. No eval / source.
+  # - Strict key filter: case glob matches [A-Z][A-Z0-9_]* (anchored)
+  # - Value decode: awk single scan, \\ -> \, \n -> LF
+  # - here-doc keeps the loop in the current shell so export propagates
+  while IFS='=' read -r _k _v; do
+    case "$_k" in
+      [A-Z]) ;;
+      [A-Z][A-Z0-9_]*) ;;
+      *) continue ;;
+    esac
+    _decoded=$(printf '%s' "$_v" | awk 'BEGIN { ORS="" } { n=length($0); i=1; while (i<=n) { c=substr($0,i,1); if (c=="\\" && i<n) { nc=substr($0,i+1,1); if (nc=="\\") { printf "\\"; i+=2 } else if (nc=="n") { printf "\n"; i+=2 } else { printf "%s", c; i++ } } else { printf "%s", c; i++ } } }')
+    export "$_k=$_decoded"
+  done <<EOF
+$_config_output
+EOF
+  unset _config_output _k _v _decoded
 else
   echo "[$_WRAPPER_NAME] config not found: $CONFIG_FILE" >&2
   echo "[$_WRAPPER_NAME] generating initial config..." >&2

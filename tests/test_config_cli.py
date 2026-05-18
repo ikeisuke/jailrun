@@ -46,9 +46,9 @@ class TestCmdLoad(ConfigCliTestBase):
         with contextlib.redirect_stdout(buf):
             config_cli.cmd_load([])
         output = buf.getvalue()
-        self.assertIn('GH_TOKEN_NAME="classic"', output)
-        self.assertIn('ALLOWED_AWS_PROFILES="default"', output)
-        self.assertIn('DEFAULT_REGION="ap-northeast-1"', output)
+        self.assertIn("GH_TOKEN_NAME=classic", output)
+        self.assertIn("ALLOWED_AWS_PROFILES=default", output)
+        self.assertIn("DEFAULT_REGION=ap-northeast-1", output)
 
     def test_cl2_app_profile_resolution(self):
         self.write_fixture(
@@ -65,7 +65,7 @@ class TestCmdLoad(ConfigCliTestBase):
         with contextlib.redirect_stdout(buf):
             config_cli.cmd_load(["--app", "myapp"])
         output = buf.getvalue()
-        self.assertIn('GH_TOKEN_NAME="custom"', output)
+        self.assertIn("GH_TOKEN_NAME=custom", output)
 
     def test_cl3_dir_longest_prefix_with_list_append(self):
         self.write_fixture(
@@ -83,7 +83,7 @@ class TestCmdLoad(ConfigCliTestBase):
         with contextlib.redirect_stdout(buf):
             config_cli.cmd_load(["--dir", "/tmp/proj/sub/nested"])
         output = buf.getvalue()
-        self.assertIn('SANDBOX_PASSTHROUGH_ENV="BASE X"', output)
+        self.assertIn("SANDBOX_PASSTHROUGH_ENV=BASE X", output)
         self.assertNotIn("SHORT", output)
 
 
