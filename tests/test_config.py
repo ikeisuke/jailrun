@@ -80,9 +80,16 @@ class BuiltinProxyDomainsTests(unittest.TestCase):
                 "desktop-release.q.us-east-1.amazonaws.com",
                 "cognito-identity.us-east-1.amazonaws.com",
                 "oidc.ap-northeast-1.amazonaws.com",
+                "*.awsapps.com",
                 "client-telemetry.us-east-1.amazonaws.com",
             },
         )
+
+    def test_kiro_covers_iam_identity_center_start_url(self):
+        # Kiro organization login asks for an IAM Identity Center start URL
+        # such as https://<directory-id>.awsapps.com/start.
+        self.assertIn("*.awsapps.com",
+                      config.BUILTIN_PROXY_DOMAINS["kiro-cli"])
 
     def test_common_contract(self):
         # COMMON contract (values, not comments). Updated v0.5.0 Unit 001:

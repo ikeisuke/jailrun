@@ -5,6 +5,7 @@ load helpers
 setup() {
   setup_jailrun_env
   export _CREDENTIAL_GUARD_SANDBOXED=""
+  unset AWS_PROFILE
   TEST_CONFIG_DIR=$(mktemp -d)
   export XDG_CONFIG_HOME="$TEST_CONFIG_DIR"
 }
