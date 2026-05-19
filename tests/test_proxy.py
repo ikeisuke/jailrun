@@ -129,14 +129,19 @@ class TestHandleClient(unittest.TestCase):
         proxy.handle_client(client, ("127.0.0.1", 12345), {"allowed.com"})
         self.assertEqual(self._get_response(client), "HTTP/1.1 502 Bad Gateway")
 
+    @patch("proxy.socket.socket")
     @patch("proxy.socket.getaddrinfo")
-    def test_private_ip_resolution_returns_403(self, mock_dns):
+    def test_private_ip_resolution_allowed_for_allowlisted_domain(self, mock_dns, mock_socket_cls):
+        """Allowlisted domains may resolve to private IPs (NPA/internal access)."""
         mock_dns.return_value = [
-            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("10.0.0.1", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.20.16.128", 443)),
         ]
-        client = self._make_client("CONNECT allowed.com:443 HTTP/1.1")
-        proxy.handle_client(client, ("127.0.0.1", 12345), {"allowed.com"})
-        self.assertEqual(self._get_response(client), "HTTP/1.1 403 Forbidden")
+        mock_remote = MagicMock()
+        mock_socket_cls.return_value = mock_remote
+        mock_remote.recv.return_value = b""
+        client = self._make_client("CONNECT internal.example.com:443 HTTP/1.1")
+        proxy.handle_client(client, ("127.0.0.1", 12345), {"internal.example.com"})
+        self.assertEqual(self._get_response(client), "HTTP/1.1 200 Connection Established")
 
     @patch("proxy.socket.socket")
     @patch("proxy.socket.getaddrinfo")
