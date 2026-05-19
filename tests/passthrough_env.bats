@@ -82,3 +82,25 @@ teardown() {
   # No extra ones from passthrough
   [[ "$output" != *"SET SANDBOX_PASSTHROUGH_ENV="* ]]
 }
+
+@test "active proxy is written to env-spec for systemd EnvironmentFile" {
+  run env -u _CREDENTIAL_GUARD_SANDBOXED sh -c '
+    export JAILRUN_LIB="'"$JAILRUN_LIB"'"
+    export WRAPPER_NAME=claude
+    export XDG_CONFIG_HOME="'"$TEST_CONFIG_DIR"'"
+    . "$JAILRUN_LIB/config.sh"
+    . "$JAILRUN_LIB/credentials.sh"
+    . "$JAILRUN_LIB/sandbox.sh"
+    _setup_sandbox
+    _PROXY_BIND="10.200.0.1"
+    _PROXY_PORT="60001"
+    _build_env_spec
+    cat "$_tmpdir/env-spec"
+  ' 2>/dev/null
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SET HTTPS_PROXY=http://10.200.0.1:60001"* ]]
+  [[ "$output" == *"SET HTTP_PROXY=http://10.200.0.1:60001"* ]]
+  [[ "$output" == *"SET https_proxy=http://10.200.0.1:60001"* ]]
+  [[ "$output" == *"SET http_proxy=http://10.200.0.1:60001"* ]]
+}

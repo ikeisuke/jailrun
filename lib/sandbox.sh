@@ -211,6 +211,19 @@ _build_env_spec() {
     if [ "${_DBUS_NEEDS_ENV_CLEAR:-}" = "1" ]; then
       echo 'SET DBUS_SESSION_BUS_ADDRESS='
     fi
+    _systemd_user=$(id -un 2>/dev/null || printf '%s' "${USER:-}")
+    printf 'SET HOME=%s\n' "$HOME"
+    if [ -n "$_systemd_user" ]; then
+      printf 'SET USER=%s\n' "$_systemd_user"
+      printf 'SET LOGNAME=%s\n' "$_systemd_user"
+    fi
+    printf 'SET SHELL=%s\n' "${SHELL:-/bin/sh}"
+    if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+      printf 'SET XDG_RUNTIME_DIR=%s\n' "$XDG_RUNTIME_DIR"
+    fi
+    if [ -n "${TERM:-}" ]; then
+      printf 'SET TERM=%s\n' "$TERM"
+    fi
     printf 'SET AWS_CONFIG_FILE=%s\n' "$_aws_config"
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
     printf 'SET GH_CONFIG_DIR=%s/gh\n' "$_tmpdir"
@@ -233,6 +246,15 @@ _build_env_spec() {
     fi
     if [ -z "${_CREDENTIAL_GUARD_SANDBOXED:-}" ] && [ -n "$_sandbox_cmd" ]; then
       echo 'SET _CREDENTIAL_GUARD_SANDBOXED=1'
+    fi
+    if [ -n "${_PROXY_PORT:-}" ]; then
+      _proxy_url="http://${_PROXY_BIND:-127.0.0.1}:$_PROXY_PORT"
+      printf 'SET HTTPS_PROXY=%s\n' "$_proxy_url"
+      printf 'SET HTTP_PROXY=%s\n' "$_proxy_url"
+      printf 'SET https_proxy=%s\n' "$_proxy_url"
+      printf 'SET http_proxy=%s\n' "$_proxy_url"
+      # Node.js 24+ native fetch respects proxy env vars only with this flag
+      echo 'SET NODE_USE_ENV_PROXY=1'
     fi
     # Passthrough custom environment variables
     # Values are escaped for safe embedding in double-quoted shell context
@@ -345,6 +367,90 @@ if [ -n "$_NETNS" ] && command -v systemd-run >/dev/null 2>&1; then
   esac
 fi
 
+# Verify that systemd-run actually joins the detected network namespace.
+# Some systemd/user-manager combinations accept NetworkNamespacePath but log
+# "network namespace setup failed, ignoring" and continue in the host netns.
+# That is fail-open for jailrun's WSL2 network restriction, so compare the
+# namespace device:inode from inside a transient unit against /run/netns/$name.
+_SYSTEMD_RUN_MODE="user"
+_SYSTEMD_RUN_USER=""
+_SYSTEMD_RUN_GROUP=""
+
+_run_netns_join_check() {
+  local _mode="$1"
+  local _actual_file="$2"
+  local _run_log="$3"
+  rm -f "$_actual_file" "$_run_log"
+
+  case "$_mode" in
+    user)
+      systemd-run --user --wait --collect --quiet \
+        -p "NetworkNamespacePath=/run/netns/$_NETNS" \
+        -- sh -c 'stat -Lc "%d:%i" /proc/self/ns/net > "$1"' _ "$_actual_file" \
+        >"$_run_log" 2>&1
+      ;;
+    root)
+      sudo -n systemd-run --wait --collect --quiet \
+        -p "User=$_SYSTEMD_RUN_USER" \
+        -p "Group=$_SYSTEMD_RUN_GROUP" \
+        -p "NetworkNamespacePath=/run/netns/$_NETNS" \
+        -- sh -c 'stat -Lc "%d:%i" /proc/self/ns/net > "$1"' _ "$_actual_file" \
+        >"$_run_log" 2>&1
+      ;;
+  esac
+}
+
+_verify_netns_join_support() {
+  [ -n "${_NETNS:-}" ] || return 0
+
+  local _expected_ns _user_actual_file _user_log _root_actual_file _root_log
+  local _user_actual_ns _root_actual_ns
+  _expected_ns=$(stat -Lc '%d:%i' "/run/netns/$_NETNS" 2>/dev/null) || {
+    echo "[$_WRAPPER_NAME] error: cannot inspect network namespace '/run/netns/$_NETNS'" >&2
+    echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to recreate the namespace, or remove agentns to disable netns" >&2
+    return 1
+  }
+
+  _SYSTEMD_RUN_USER=$(id -un 2>/dev/null || printf '%s' "${USER:-}")
+  _SYSTEMD_RUN_GROUP=$(id -gn 2>/dev/null || printf '%s' "${GROUP:-}")
+  if [ -z "$_SYSTEMD_RUN_USER" ] || [ -z "$_SYSTEMD_RUN_GROUP" ]; then
+    echo "[$_WRAPPER_NAME] error: cannot determine current user/group for netns systemd-run" >&2
+    return 1
+  fi
+
+  _user_actual_file="$_tmpdir/netns-check.user.actual"
+  _user_log="$_tmpdir/netns-check.user.log"
+  if _run_netns_join_check user "$_user_actual_file" "$_user_log"; then
+    _user_actual_ns=$(sed -n '1p' "$_user_actual_file" 2>/dev/null)
+    if [ "$_user_actual_ns" = "$_expected_ns" ]; then
+      _SYSTEMD_RUN_MODE="user"
+      return 0
+    fi
+  fi
+
+  _root_actual_file="$_tmpdir/netns-check.root.actual"
+  _root_log="$_tmpdir/netns-check.root.log"
+  if command -v sudo >/dev/null 2>&1 && _run_netns_join_check root "$_root_actual_file" "$_root_log"; then
+    _root_actual_ns=$(sed -n '1p' "$_root_actual_file" 2>/dev/null)
+    if [ "$_root_actual_ns" = "$_expected_ns" ]; then
+      _SYSTEMD_RUN_MODE="root"
+      echo "[$_WRAPPER_NAME] WARN: systemd-run --user did not enter '$_NETNS'; using sudo -n systemd-run with User=$_SYSTEMD_RUN_USER" >&2
+      return 0
+    fi
+  fi
+
+  echo "[$_WRAPPER_NAME] error: cannot start inside network namespace '$_NETNS'" >&2
+  echo "[$_WRAPPER_NAME] error: expected $_expected_ns; user systemd-run got ${_user_actual_ns:-<empty>}; sudo systemd-run got ${_root_actual_ns:-<empty>}" >&2
+  if [ -s "$_user_log" ]; then
+    sed "s/^/[$_WRAPPER_NAME] systemd-run --user: /" "$_user_log" >&2
+  fi
+  if [ -s "$_root_log" ]; then
+    sed "s/^/[$_WRAPPER_NAME] sudo systemd-run: /" "$_root_log" >&2
+  fi
+  echo "[$_WRAPPER_NAME] hint: run 'sudo -v' and retry, or remove agentns to disable netns" >&2
+  return 1
+}
+
 # Single decision point: should _start_proxy actually launch the proxy?
 # Both the readiness gate below and _start_proxy consult this so the
 # "is the proxy going to bind?" question has one answer per invocation.
@@ -379,8 +485,13 @@ _verify_proxy_readiness() {
   return 0
 }
 
-# Readiness launch block (sub A): only fires when the namespace is active
-# AND the proxy will actually bind. Fail-closed: no loopback fallback.
+# Readiness launch blocks: when the namespace is active, first prove a
+# systemd-launched unit can actually enter it (user manager, or sudo fallback).
+# Then, only when the proxy will bind, verify the host-side veth resources.
+# Fail-closed: no host-net fallback.
+if [ -n "$_NETNS" ]; then
+  _verify_netns_join_support || exit 1
+fi
 if [ -n "$_NETNS" ] && _proxy_should_start; then
   _verify_proxy_readiness || exit 1
 fi
@@ -439,6 +550,19 @@ _start_proxy() {
   _PROXY_PORT="$_proxy_port"
   _PROXY_PID="$_proxy_pid"
   _PROXY_BIND="$_proxy_bind"
+  _PROXY_LOG="$_proxy_log"
+}
+
+_preserve_proxy_log_on_failure() {
+  [ "${_exit_code:-0}" -ne 0 ] || return 0
+  [ -n "${_PROXY_LOG:-}" ] || return 0
+  [ -s "$_PROXY_LOG" ] || return 0
+
+  _saved_proxy_log="/tmp/jailrun-${_WRAPPER_NAME}-proxy-$$.log"
+  if cp "$_PROXY_LOG" "$_saved_proxy_log" 2>/dev/null; then
+    chmod 0600 "$_saved_proxy_log" 2>/dev/null || true
+    echo "[$_WRAPPER_NAME] proxy log saved: $_saved_proxy_log" >&2
+  fi
 }
 
 # ============================================================
@@ -460,6 +584,7 @@ credential_guard_sandbox_exec() {
   # Start proxy if enabled
   _PROXY_PORT=""
   _PROXY_PID=""
+  _PROXY_LOG=""
   _start_proxy
 
   _build_exec_script
@@ -505,6 +630,7 @@ credential_guard_sandbox_exec() {
       kill "$_PROXY_PID" 2>/dev/null || true
       wait "$_PROXY_PID" 2>/dev/null || true
     fi
+    _preserve_proxy_log_on_failure
     _cleanup_sandbox
     rm -rf "$_tmpdir"
     exit "$_exit_code"
