@@ -485,15 +485,38 @@ _verify_proxy_readiness() {
   return 0
 }
 
+# Fail-closed: on WSL2, IPAddressDeny is silently ignored so agentns is
+# the only kernel-enforced network restriction.  Refuse to start when the
+# proxy expects network restriction but agentns is absent.
+if _is_wsl2 && _proxy_should_start && [ -z "$_NETNS" ]; then
+  echo "[$_WRAPPER_NAME] error: WSL2 network restriction requires agentns but namespace not found" >&2
+  echo "[$_WRAPPER_NAME] error: IPAddressDeny is ineffective on WSL2; proxy can be bypassed without agentns" >&2
+  echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to create the namespace" >&2
+  exit 1
+fi
+
+# Verify that agentns iptables OUTPUT policy is DROP.  Without this, the
+# namespace exists but traffic is not restricted (fail-open).
+_verify_agentns_iptables_policy() {
+  if ! sudo -n ip netns exec "$_NETNS" iptables -S OUTPUT 2>/dev/null \
+    | grep -q -- '-P OUTPUT DROP'; then
+    echo "[$_WRAPPER_NAME] error: agentns iptables OUTPUT policy is not DROP" >&2
+    echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to restore iptables rules" >&2
+    return 1
+  fi
+}
+
 # Readiness launch blocks: when the namespace is active, first prove a
 # systemd-launched unit can actually enter it (user manager, or sudo fallback).
-# Then, only when the proxy will bind, verify the host-side veth resources.
+# Then, only when the proxy will bind, verify the host-side veth resources
+# and iptables policy.
 # Fail-closed: no host-net fallback.
 if [ -n "$_NETNS" ]; then
   _verify_netns_join_support || exit 1
 fi
 if [ -n "$_NETNS" ] && _proxy_should_start; then
   _verify_proxy_readiness || exit 1
+  _verify_agentns_iptables_policy || exit 1
 fi
 
 _start_proxy() {

@@ -23,7 +23,11 @@ setup() {
   cp "$JAILRUN_LIB/sandbox.sh" "$_fake_lib/sandbox.sh"
   cp "$JAILRUN_LIB/netns-const.sh" "$_fake_lib/netns-const.sh"
   printf '#!/bin/sh\n# stub for tests\n' > "$_fake_lib/platform/sandbox-darwin.sh"
-  printf '#!/bin/sh\n# stub for tests\n' > "$_fake_lib/platform/sandbox-linux.sh"
+  # Platform stub: provides _is_wsl2 driven by IS_WSL2 env var.
+  cat > "$_fake_lib/platform/sandbox-linux.sh" <<'STUB'
+#!/bin/sh
+_is_wsl2() { [ "${IS_WSL2:-0}" = "1" ]; }
+STUB
 
   # PATH shim for `ip`. Behaviour driven by IP_SHIM_* env vars set per-test:
   #   IP_SHIM_VETH_EXISTS=1  -> `ip link show veth-host` succeeds
@@ -117,6 +121,8 @@ SHIM
 
   # PATH shim for `sudo`. It strips -n and re-enters the systemd-run shim with
   # SUDO_SHIM=1 so tests can model the root-manager fallback without sudo.
+  # Also handles `sudo -n ip netns exec <ns> iptables -S OUTPUT` for iptables
+  # policy verification — driven by IPTABLES_OUTPUT_POLICY env var.
   cat > "$_fake_lib/shim-bin/sudo" <<'SHIM'
 #!/bin/sh
 if [ "${1:-}" = "-n" ]; then
@@ -126,6 +132,18 @@ case "${1:-}" in
   systemd-run)
     shift
     SUDO_SHIM=1 exec systemd-run "$@"
+    ;;
+  ip)
+    # sudo -n ip netns exec <ns> iptables -S OUTPUT
+    if [ "${2:-}" = "netns" ] && [ "${3:-}" = "exec" ] && [ "${5:-}" = "iptables" ]; then
+      if [ "${IPTABLES_OUTPUT_POLICY:-DROP}" = "DROP" ]; then
+        echo "-P OUTPUT DROP"
+        echo "-A OUTPUT -o lo -j ACCEPT"
+      else
+        echo "-P OUTPUT ACCEPT"
+      fi
+      exit 0
+    fi
     ;;
 esac
 exit 1
@@ -435,4 +453,70 @@ _run_sandbox() {
   _saved=$(printf "%s\n" "$output" | sed -n "s/.*proxy log saved: //p" | tail -n 1)
   [ -f "$_saved" ]
   grep -q "BLOCKED domain: missing.example" "$_saved"
+}
+
+# --- WSL2 fail-closed: agentns absence + iptables policy ---
+
+@test "sandbox.sh defines _verify_agentns_iptables_policy function" {
+  run grep -qE '^_verify_agentns_iptables_policy\(\) \{' "$JAILRUN_LIB/sandbox.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "WSL2 + proxy enabled + no agentns -> exit 1 (fail-closed)" {
+  run _run_sandbox 'echo "SOURCED:UNREACHABLE"' \
+    IS_WSL2=1 PROXY_ENABLED=true PROXY_ALLOW_DOMAINS=example.com
+  [ "$status" -eq 1 ]
+  [[ "$output" != *"SOURCED:UNREACHABLE"* ]]
+  [[ "$output" == *"WSL2 network restriction requires agentns"* ]]
+  [[ "$output" == *"wsl2-netns-setup.sh"* ]]
+}
+
+@test "WSL2 + proxy disabled + no agentns -> source succeeds (no restriction needed)" {
+  run _run_sandbox 'echo "SOURCED:OK"' \
+    IS_WSL2=1 PROXY_ENABLED=false PROXY_ALLOW_DOMAINS=example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SOURCED:OK"* ]]
+}
+
+@test "non-WSL2 + proxy enabled + no agentns -> source succeeds (IPAddressDeny works)" {
+  run _run_sandbox 'echo "SOURCED:OK"' \
+    IS_WSL2=0 PROXY_ENABLED=true PROXY_ALLOW_DOMAINS=example.com
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SOURCED:OK"* ]]
+}
+
+@test "_verify_agentns_iptables_policy: OUTPUT DROP -> return 0" {
+  run _run_sandbox '_NETNS=agentns; _verify_agentns_iptables_policy; echo "RC:$?"' \
+    IPTABLES_OUTPUT_POLICY=DROP
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RC:0"* ]]
+  [[ "$output" != *"error:"* ]]
+}
+
+@test "_verify_agentns_iptables_policy: OUTPUT ACCEPT -> return 1 with hint" {
+  run _run_sandbox '_NETNS=agentns; _verify_agentns_iptables_policy; echo "RC:$?"' \
+    IPTABLES_OUTPUT_POLICY=ACCEPT
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"OUTPUT policy is not DROP"* ]]
+  [[ "$output" == *"wsl2-netns-setup.sh"* ]]
+  [[ "$output" == *"RC:1"* ]]
+}
+
+@test "agentns detected + proxy + iptables ACCEPT -> source exits 1 (fail-closed)" {
+  run _run_sandbox 'echo "SOURCED:UNREACHABLE"' \
+    NS_DETECTED=1 PROXY_ENABLED=true PROXY_ALLOW_DOMAINS=example.com \
+    IP_SHIM_VETH_EXISTS=1 IP_SHIM_HAS_HOST_IP=1 \
+    IPTABLES_OUTPUT_POLICY=ACCEPT
+  [ "$status" -eq 1 ]
+  [[ "$output" != *"SOURCED:UNREACHABLE"* ]]
+  [[ "$output" == *"OUTPUT policy is not DROP"* ]]
+}
+
+@test "agentns detected + proxy + iptables DROP -> source succeeds" {
+  run _run_sandbox 'echo "SOURCED:OK"' \
+    NS_DETECTED=1 PROXY_ENABLED=true PROXY_ALLOW_DOMAINS=example.com \
+    IP_SHIM_VETH_EXISTS=1 IP_SHIM_HAS_HOST_IP=1 \
+    IPTABLES_OUTPUT_POLICY=DROP
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SOURCED:OK"* ]]
 }
