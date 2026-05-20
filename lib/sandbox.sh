@@ -589,17 +589,9 @@ credential_guard_sandbox_exec() {
 
   _build_exec_script
 
-  # Append proxy env exports to exec.sh (before the exec line)
-  if [ -n "$_PROXY_PORT" ]; then
-    _proxy_script="$_tmpdir/exec-proxy.sh"
-    {
-      echo '#!/bin/sh'
-      printf 'export HTTPS_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
-      printf 'export HTTP_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
-      printf 'exec "%s" "$@"\n' "$_tmpdir/exec.sh"
-    } > "$_proxy_script"
-    chmod +x "$_proxy_script"
-  fi
+  # Proxy env vars are now emitted by _build_env_spec (env-spec) so
+  # exec.sh already exports HTTPS_PROXY/HTTP_PROXY/etc. No separate
+  # exec-proxy.sh wrapper is needed.
 
   if [ -n "$_sandbox_cmd" ]; then
     echo "[$_WRAPPER_NAME] sandbox: $_sandbox_cmd" >&2
@@ -613,11 +605,7 @@ credential_guard_sandbox_exec() {
     # EXIT trap ensures cleanup even if shell is killed by signal.
     # Must include rm -rf to preserve credentials.sh's tmpdir cleanup.
     trap '_stop_deny_log; _cleanup_sandbox; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null; rm -rf "$_tmpdir"' EXIT
-    if [ -n "$_PROXY_PID" ]; then
-      "$_tmpdir/exec-proxy.sh" "$@"
-    else
-      "$_tmpdir/exec.sh" "$@"
-    fi
+    "$_tmpdir/exec.sh" "$@"
     _exit_code=$?
     trap - EXIT
     _stop_deny_log
