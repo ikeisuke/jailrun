@@ -84,6 +84,7 @@ BUILTIN_PROXY_DOMAINS: dict[str, list[str]] = {
         "desktop-release.q.us-east-1.amazonaws.com",
         "cognito-identity.us-east-1.amazonaws.com",
         "oidc.ap-northeast-1.amazonaws.com",
+        "*.awsapps.com",
         "client-telemetry.us-east-1.amazonaws.com",
     ],
     # gemini CLI: minimum reach categories per Issue #85 / Intent M3

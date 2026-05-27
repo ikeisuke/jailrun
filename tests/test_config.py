@@ -80,8 +80,36 @@ class BuiltinProxyDomainsTests(unittest.TestCase):
                 "desktop-release.q.us-east-1.amazonaws.com",
                 "cognito-identity.us-east-1.amazonaws.com",
                 "oidc.ap-northeast-1.amazonaws.com",
+                "*.awsapps.com",
                 "client-telemetry.us-east-1.amazonaws.com",
             },
+        )
+
+    def test_kiro_covers_iam_identity_center_start_url(self):
+        # Kiro organization login asks for an IAM Identity Center start URL
+        # such as https://<directory-id>.awsapps.com/start.
+        self.assertIn("*.awsapps.com",
+                      config.BUILTIN_PROXY_DOMAINS["kiro-cli"])
+
+    def test_kiro_awsapps_wildcard_matches_subdomains_only(self):
+        # Pin the contract between BUILTIN_PROXY_DOMAINS["kiro-cli"] (data
+        # layer) and proxy.match_domain (interpretation layer). A change on
+        # either side that breaks subdomain-only matching must be detected.
+        import proxy
+
+        allowed = set(config.BUILTIN_PROXY_DOMAINS["kiro-cli"])
+
+        # Subdomains (including IAM Identity Center directory hosts) match.
+        self.assertTrue(proxy.match_domain("d-1234567890.awsapps.com", allowed))
+        self.assertTrue(proxy.match_domain("deep.sub.awsapps.com", allowed))
+
+        # Base domain itself does not match (existing *.example.com semantics).
+        self.assertFalse(proxy.match_domain("awsapps.com", allowed))
+
+        # Label-boundary and suffix-extension attack hosts do not match.
+        self.assertFalse(proxy.match_domain("awsappsXXX.com", allowed))
+        self.assertFalse(
+            proxy.match_domain("evil.awsapps.com.attacker.example", allowed)
         )
 
     def test_common_contract(self):
