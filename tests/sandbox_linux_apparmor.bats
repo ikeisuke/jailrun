@@ -286,6 +286,7 @@ _build_profile_for_regex() {
     export SANDBOX_DENY_READ_NAMES _git_parent_toplevel _git_common_dir _other_worktrees
     export _WRAPPER_NAME _APPARMOR_AVAILABLE PROXY_ENABLED
     _detect_git_worktree() { :; }
+    ip() { return 1; }
     # Source the real lib/sandbox.sh: this builds _SANDBOX_DENY_READ_REGEXES
     # via the production _regex_escape function and loop.
     . "'"$JAILRUN_LIB"'/sandbox.sh"

@@ -193,6 +193,14 @@ _build_git_askpass() {
   chmod 0700 "$_tmpdir/git-askpass"
 }
 
+# Escape a value for safe embedding in a double-quoted shell context.
+# exec.sh emits each SET KEY=VALUE as `export KEY="VALUE"`, so backslash,
+# double-quote, dollar, and backtick in VALUE must be neutralised to prevent
+# wrapper-side command substitution / variable expansion.
+_esc_env_value() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g'
+}
+
 # generate env var spec file (SET/UNSET format)
 _build_env_spec() {
   local _spec="$_tmpdir/env-spec"
@@ -211,6 +219,19 @@ _build_env_spec() {
     if [ "${_DBUS_NEEDS_ENV_CLEAR:-}" = "1" ]; then
       echo 'SET DBUS_SESSION_BUS_ADDRESS='
     fi
+    _systemd_user=$(id -un 2>/dev/null || printf '%s' "${USER:-}")
+    printf 'SET HOME=%s\n' "$(_esc_env_value "$HOME")"
+    if [ -n "$_systemd_user" ]; then
+      printf 'SET USER=%s\n' "$(_esc_env_value "$_systemd_user")"
+      printf 'SET LOGNAME=%s\n' "$(_esc_env_value "$_systemd_user")"
+    fi
+    printf 'SET SHELL=%s\n' "$(_esc_env_value "${SHELL:-/bin/sh}")"
+    if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+      printf 'SET XDG_RUNTIME_DIR=%s\n' "$(_esc_env_value "$XDG_RUNTIME_DIR")"
+    fi
+    if [ -n "${TERM:-}" ]; then
+      printf 'SET TERM=%s\n' "$(_esc_env_value "$TERM")"
+    fi
     printf 'SET AWS_CONFIG_FILE=%s\n' "$_aws_config"
     printf 'SET AWS_SHARED_CREDENTIALS_FILE=%s\n' "$_aws_creds"
     printf 'SET GH_CONFIG_DIR=%s/gh\n' "$_tmpdir"
@@ -219,10 +240,10 @@ _build_env_spec() {
     if [ -f /etc/ssl/cert.pem ]; then
       echo 'SET SSL_CERT_FILE=/etc/ssl/cert.pem'
     fi
-    printf 'SET PATH=%s/shims:%s\n' "$JAILRUN_LIB" "$PATH"
+    printf 'SET PATH=%s\n' "$(_esc_env_value "$JAILRUN_LIB/shims:$PATH")"
     if [ -n "$_gh_token" ]; then
       _build_git_askpass
-      printf 'SET GH_TOKEN=%s\n' "$_gh_token"
+      printf 'SET GH_TOKEN=%s\n' "$(_esc_env_value "$_gh_token")"
       printf 'SET GIT_ASKPASS=%s/git-askpass\n' "$_tmpdir"
       echo 'SET GIT_TERMINAL_PROMPT=0'
       echo 'SET GIT_CONFIG_COUNT=2'
@@ -233,6 +254,16 @@ _build_env_spec() {
     fi
     if [ -z "${_CREDENTIAL_GUARD_SANDBOXED:-}" ] && [ -n "$_sandbox_cmd" ]; then
       echo 'SET _CREDENTIAL_GUARD_SANDBOXED=1'
+    fi
+    if [ -n "${_PROXY_PORT:-}" ]; then
+      _proxy_url="http://${_PROXY_BIND:-127.0.0.1}:$_PROXY_PORT"
+      _proxy_url_esc=$(_esc_env_value "$_proxy_url")
+      printf 'SET HTTPS_PROXY=%s\n' "$_proxy_url_esc"
+      printf 'SET HTTP_PROXY=%s\n' "$_proxy_url_esc"
+      printf 'SET https_proxy=%s\n' "$_proxy_url_esc"
+      printf 'SET http_proxy=%s\n' "$_proxy_url_esc"
+      # Node.js 24+ native fetch respects proxy env vars only with this flag
+      echo 'SET NODE_USE_ENV_PROXY=1'
     fi
     # Passthrough custom environment variables
     # Values are escaped for safe embedding in double-quoted shell context
@@ -264,7 +295,7 @@ _build_env_spec() {
 "*) echo "[$_WRAPPER_NAME] WARN: skipping $_var (value contains newlines)" >&2
               continue ;;
         esac
-        _escaped=$(printf '%s' "$_val" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g')
+        _escaped=$(_esc_env_value "$_val")
         printf 'SET %s=%s\n' "$_var" "$_escaped"
       fi
     done
@@ -345,6 +376,90 @@ if [ -n "$_NETNS" ] && command -v systemd-run >/dev/null 2>&1; then
   esac
 fi
 
+# Verify that systemd-run actually joins the detected network namespace.
+# Some systemd/user-manager combinations accept NetworkNamespacePath but log
+# "network namespace setup failed, ignoring" and continue in the host netns.
+# That is fail-open for jailrun's WSL2 network restriction, so compare the
+# namespace device:inode from inside a transient unit against /run/netns/$name.
+_SYSTEMD_RUN_MODE="user"
+_SYSTEMD_RUN_USER=""
+_SYSTEMD_RUN_GROUP=""
+
+_run_netns_join_check() {
+  local _mode="$1"
+  local _actual_file="$2"
+  local _run_log="$3"
+  rm -f "$_actual_file" "$_run_log"
+
+  case "$_mode" in
+    user)
+      systemd-run --user --wait --collect --quiet \
+        -p "NetworkNamespacePath=/run/netns/$_NETNS" \
+        -- sh -c 'stat -Lc "%d:%i" /proc/self/ns/net > "$1"' _ "$_actual_file" \
+        >"$_run_log" 2>&1
+      ;;
+    root)
+      sudo -n systemd-run --wait --collect --quiet \
+        -p "User=$_SYSTEMD_RUN_USER" \
+        -p "Group=$_SYSTEMD_RUN_GROUP" \
+        -p "NetworkNamespacePath=/run/netns/$_NETNS" \
+        -- sh -c 'stat -Lc "%d:%i" /proc/self/ns/net > "$1"' _ "$_actual_file" \
+        >"$_run_log" 2>&1
+      ;;
+  esac
+}
+
+_verify_netns_join_support() {
+  [ -n "${_NETNS:-}" ] || return 0
+
+  local _expected_ns _user_actual_file _user_log _root_actual_file _root_log
+  local _user_actual_ns _root_actual_ns
+  _expected_ns=$(stat -Lc '%d:%i' "/run/netns/$_NETNS" 2>/dev/null) || {
+    echo "[$_WRAPPER_NAME] error: cannot inspect network namespace '/run/netns/$_NETNS'" >&2
+    echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to recreate the namespace, or remove agentns to disable netns" >&2
+    return 1
+  }
+
+  _SYSTEMD_RUN_USER=$(id -un 2>/dev/null || printf '%s' "${USER:-}")
+  _SYSTEMD_RUN_GROUP=$(id -gn 2>/dev/null || printf '%s' "${GROUP:-}")
+  if [ -z "$_SYSTEMD_RUN_USER" ] || [ -z "$_SYSTEMD_RUN_GROUP" ]; then
+    echo "[$_WRAPPER_NAME] error: cannot determine current user/group for netns systemd-run" >&2
+    return 1
+  fi
+
+  _user_actual_file="$_tmpdir/netns-check.user.actual"
+  _user_log="$_tmpdir/netns-check.user.log"
+  if _run_netns_join_check user "$_user_actual_file" "$_user_log"; then
+    _user_actual_ns=$(sed -n '1p' "$_user_actual_file" 2>/dev/null)
+    if [ "$_user_actual_ns" = "$_expected_ns" ]; then
+      _SYSTEMD_RUN_MODE="user"
+      return 0
+    fi
+  fi
+
+  _root_actual_file="$_tmpdir/netns-check.root.actual"
+  _root_log="$_tmpdir/netns-check.root.log"
+  if command -v sudo >/dev/null 2>&1 && _run_netns_join_check root "$_root_actual_file" "$_root_log"; then
+    _root_actual_ns=$(sed -n '1p' "$_root_actual_file" 2>/dev/null)
+    if [ "$_root_actual_ns" = "$_expected_ns" ]; then
+      _SYSTEMD_RUN_MODE="root"
+      echo "[$_WRAPPER_NAME] WARN: systemd-run --user did not enter '$_NETNS'; using sudo -n systemd-run with User=$_SYSTEMD_RUN_USER" >&2
+      return 0
+    fi
+  fi
+
+  echo "[$_WRAPPER_NAME] error: cannot start inside network namespace '$_NETNS'" >&2
+  echo "[$_WRAPPER_NAME] error: expected $_expected_ns; user systemd-run got ${_user_actual_ns:-<empty>}; sudo systemd-run got ${_root_actual_ns:-<empty>}" >&2
+  if [ -s "$_user_log" ]; then
+    sed "s/^/[$_WRAPPER_NAME] systemd-run --user: /" "$_user_log" >&2
+  fi
+  if [ -s "$_root_log" ]; then
+    sed "s/^/[$_WRAPPER_NAME] sudo systemd-run: /" "$_root_log" >&2
+  fi
+  echo "[$_WRAPPER_NAME] hint: run 'sudo -v' and retry, or remove agentns to disable netns" >&2
+  return 1
+}
+
 # Single decision point: should _start_proxy actually launch the proxy?
 # Both the readiness gate below and _start_proxy consult this so the
 # "is the proxy going to bind?" question has one answer per invocation.
@@ -379,8 +494,13 @@ _verify_proxy_readiness() {
   return 0
 }
 
-# Readiness launch block (sub A): only fires when the namespace is active
-# AND the proxy will actually bind. Fail-closed: no loopback fallback.
+# Readiness launch blocks: when the namespace is active, first prove a
+# systemd-launched unit can actually enter it (user manager, or sudo fallback).
+# Then, only when the proxy will bind, verify the host-side veth resources.
+# Fail-closed: no host-net fallback.
+if [ -n "$_NETNS" ]; then
+  _verify_netns_join_support || exit 1
+fi
 if [ -n "$_NETNS" ] && _proxy_should_start; then
   _verify_proxy_readiness || exit 1
 fi
@@ -439,6 +559,29 @@ _start_proxy() {
   _PROXY_PORT="$_proxy_port"
   _PROXY_PID="$_proxy_pid"
   _PROXY_BIND="$_proxy_bind"
+  _PROXY_LOG="$_proxy_log"
+}
+
+_preserve_proxy_log_on_failure() {
+  [ "${_exit_code:-0}" -ne 0 ] || return 0
+  [ -n "${_PROXY_LOG:-}" ] || return 0
+  [ -s "$_PROXY_LOG" ] || return 0
+
+  # mktemp -d gives us an unpredictable 0700 directory we own. Writing inside
+  # an attacker-inaccessible directory prevents the symlink-swap TOCTOU that
+  # plain `>` redirection has against a same-uid attacker watching /tmp.
+  _saved_proxy_dir=$(
+    umask 077
+    mktemp -d "/tmp/jailrun-${_WRAPPER_NAME}-proxy.XXXXXX" 2>/dev/null
+  )
+  [ -n "$_saved_proxy_dir" ] || return 0
+
+  _saved_proxy_log="$_saved_proxy_dir/proxy.log"
+  if (umask 077; cat "$_PROXY_LOG" > "$_saved_proxy_log") 2>/dev/null; then
+    echo "[$_WRAPPER_NAME] proxy log saved: $_saved_proxy_log" >&2
+  else
+    rm -rf "$_saved_proxy_dir" 2>/dev/null || true
+  fi
 }
 
 # ============================================================
@@ -460,21 +603,14 @@ credential_guard_sandbox_exec() {
   # Start proxy if enabled
   _PROXY_PORT=""
   _PROXY_PID=""
+  _PROXY_LOG=""
   _start_proxy
 
   _build_exec_script
 
-  # Append proxy env exports to exec.sh (before the exec line)
-  if [ -n "$_PROXY_PORT" ]; then
-    _proxy_script="$_tmpdir/exec-proxy.sh"
-    {
-      echo '#!/bin/sh'
-      printf 'export HTTPS_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
-      printf 'export HTTP_PROXY="http://%s:%s"\n' "${_PROXY_BIND:-127.0.0.1}" "$_PROXY_PORT"
-      printf 'exec "%s" "$@"\n' "$_tmpdir/exec.sh"
-    } > "$_proxy_script"
-    chmod +x "$_proxy_script"
-  fi
+  # Proxy env vars are now emitted by _build_env_spec (env-spec) so
+  # exec.sh already exports HTTPS_PROXY/HTTP_PROXY/etc. No separate
+  # exec-proxy.sh wrapper is needed.
 
   if [ -n "$_sandbox_cmd" ]; then
     echo "[$_WRAPPER_NAME] sandbox: $_sandbox_cmd" >&2
@@ -488,11 +624,7 @@ credential_guard_sandbox_exec() {
     # EXIT trap ensures cleanup even if shell is killed by signal.
     # Must include rm -rf to preserve credentials.sh's tmpdir cleanup.
     trap '_stop_deny_log; _cleanup_sandbox; [ -n "$_PROXY_PID" ] && kill "$_PROXY_PID" 2>/dev/null; rm -rf "$_tmpdir"' EXIT
-    if [ -n "$_PROXY_PID" ]; then
-      "$_tmpdir/exec-proxy.sh" "$@"
-    else
-      "$_tmpdir/exec.sh" "$@"
-    fi
+    "$_tmpdir/exec.sh" "$@"
     _exit_code=$?
     trap - EXIT
     _stop_deny_log
@@ -505,6 +637,7 @@ credential_guard_sandbox_exec() {
       kill "$_PROXY_PID" 2>/dev/null || true
       wait "$_PROXY_PID" 2>/dev/null || true
     fi
+    _preserve_proxy_log_on_failure
     _cleanup_sandbox
     rm -rf "$_tmpdir"
     exit "$_exit_code"

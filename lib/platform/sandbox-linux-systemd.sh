@@ -34,6 +34,9 @@ _setup_sandbox() {
   fi
 
   _sandbox_cmd="systemd-run"
+  if [ "${_SYSTEMD_RUN_MODE:-user}" = "root" ]; then
+    _sandbox_cmd="sudo -n systemd-run"
+  fi
   local _props="$_tmpdir/systemd-props"
   {
     # Prevent privilege escalation
@@ -62,11 +65,14 @@ _setup_sandbox() {
     # Network
     echo '-p PrivateNetwork=no'
     echo '-p RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6'
-    # When proxy is enabled, restrict to localhost only (proxy handles filtering)
+    # When proxy is enabled, restrict egress to the proxy endpoint only.
     if [ "${PROXY_ENABLED:-false}" = "true" ] || [ "${PROXY_ENABLED:-0}" = "1" ]; then
       echo '-p IPAddressDeny=any'
       echo '-p IPAddressAllow=127.0.0.0/8'
       echo '-p IPAddressAllow=::1/128'
+      if [ -n "${_NETNS:-}" ] && [ -n "${JAILRUN_NETNS_HOST_IP:-}" ]; then
+        echo "-p IPAddressAllow=$JAILRUN_NETNS_HOST_IP/32"
+      fi
     fi
     # When network namespace exists, join it (kernel-enforced network isolation)
     if [ -n "${_NETNS:-}" ]; then
@@ -201,9 +207,18 @@ _build_systemd_envfile() {
 _build_sandbox_exec() {
   _build_systemd_envfile
 
-  # --pty allocates a new PTY, so set OSC title from inside the PTY
-  printf 'exec systemd-run \\\n'
-  printf '  --user --pty --wait --collect --same-dir \\\n'
+  # --pty allocates a new PTY, so set OSC title from inside the PTY.
+  # In netns fallback mode, use the system manager via sudo so systemd can
+  # join /run/netns/agentns, then drop privileges back to the invoking user.
+  if [ "${_SYSTEMD_RUN_MODE:-user}" = "root" ]; then
+    printf 'exec sudo -n systemd-run \\\n'
+    printf '  --pty --wait --collect --same-dir \\\n'
+    printf '  -p "User=%s" \\\n' "$_SYSTEMD_RUN_USER"
+    printf '  -p "Group=%s" \\\n' "$_SYSTEMD_RUN_GROUP"
+  else
+    printf 'exec systemd-run \\\n'
+    printf '  --user --pty --wait --collect --same-dir \\\n'
+  fi
   printf '  -p "EnvironmentFile=%s/env-systemd" \\\n' "$_tmpdir"
   while IFS= read -r _line; do
     case "$_line" in

@@ -202,7 +202,16 @@ When the `agentns` namespace exists, jailrun automatically detects it and:
 - Launches the agent inside the namespace via `NetworkNamespacePath`
 
 So after running the setup script, a normal `jailrun claude` will use the
-namespace automatically. No sudo is required at runtime.
+namespace automatically.
+
+At startup, jailrun verifies that the launched unit actually entered
+`agentns`. If `systemd-run --user` accepts `NetworkNamespacePath` but continues
+in the host namespace, jailrun falls back to `sudo -n systemd-run` with
+`User=<current-user>` / `Group=<current-group>` so the system manager can join
+the namespace and the agent still runs as the invoking user. If sudo is not
+currently authorized, run `sudo -v` first and retry. If neither systemd path
+can enter `agentns`, jailrun stops instead of running with unrestricted host
+network access.
 
 Since cycle v0.4.1, the namespace OUTPUT `iptables` rule is restricted to
 **TCP destination ports inside that range only** (defense-in-depth): the
