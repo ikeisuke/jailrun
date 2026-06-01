@@ -31,20 +31,33 @@ _resolve_path() {
 
 export JAILRUN_DIR="$(_resolve_path "$0")"
 # after make install: /usr/local/lib/jailrun/  dev: ../lib/
+# JAILRUN_LIB is always auto-resolved from $0 to avoid attacker-controlled
+# env-var injection sourcing arbitrary shell code into jailrun (codex code
+# review Round 1 #1 / security). Tests that need an alternative SoT must
+# create a full bin/lib install-tree under a tmpdir and invoke that bin/jailrun.
 if [ -d "$JAILRUN_DIR/../lib/jailrun" ]; then
   export JAILRUN_LIB="$(cd "$JAILRUN_DIR/../lib/jailrun" && pwd)"
 else
   export JAILRUN_LIB="$(cd "$JAILRUN_DIR/../lib" && pwd)"
 fi
 
+# Load agent subcmd single source of truth and run fail-fast validator.
+. "$JAILRUN_LIB/subcmd-registry.sh"
+_jailrun_validate_agent_subcommands || exit 1
+
 _subcmd="${1:-}"
 shift 2>/dev/null || true
 
+# Agent subcmd dispatch derived from JAILRUN_AGENT_SUBCOMMANDS.
+# Placed before the case statement so unknown/help/version/empty still reach
+# the existing case branches.
+if _jailrun_is_agent_subcmd "$_subcmd"; then
+  WRAPPER_NAME="$_subcmd"
+  . "$JAILRUN_LIB/agent-wrapper.sh"
+  exit $?
+fi
+
 case "$_subcmd" in
-  claude|codex|gemini|kiro-cli|kiro-cli-chat|copilot)
-    WRAPPER_NAME="$_subcmd"
-    . "$JAILRUN_LIB/agent-wrapper.sh"
-    ;;
   token)
     exec "$JAILRUN_LIB/token.sh" "$@"
     ;;
@@ -55,16 +68,13 @@ case "$_subcmd" in
     exec "$JAILRUN_LIB/config-cmd.sh" "$@"
     ;;
   --help|-h|"")
-    cat <<'USAGE'
+    cat <<'USAGE_HEAD'
 Usage: jailrun <command> [args...]
 
 Commands:
-  claude              launch Claude Code
-  codex               launch Codex
-  gemini              launch Gemini CLI
-  kiro-cli            launch Kiro CLI
-  kiro-cli-chat       launch Kiro CLI Chat
-  copilot             launch GitHub Copilot CLI
+USAGE_HEAD
+    _jailrun_print_agent_help_lines
+    cat <<'USAGE_TAIL'
   token               token management (add, rotate, delete, list)
   config              config management (show, set, edit, path, init)
   ruleset             create GitHub repository rulesets
@@ -82,7 +92,7 @@ Examples:
   jailrun token list
   jailrun ruleset
   jailrun ruleset --dry-run owner/repo
-USAGE
+USAGE_TAIL
     exit 0
     ;;
   --version|-v)

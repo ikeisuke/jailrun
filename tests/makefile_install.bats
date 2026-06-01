@@ -77,6 +77,7 @@ teardown() {
     lib/jailrun/ruleset.sh \
     lib/jailrun/sandbox.sh \
     lib/jailrun/shims/codex \
+    lib/jailrun/subcmd-registry.sh \
     lib/jailrun/token.sh \
     | sort)
   [ "$_expected" = "$_actual" ]
