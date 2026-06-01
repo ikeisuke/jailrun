@@ -72,6 +72,7 @@ teardown() {
     lib/jailrun/platform/sandbox-linux-apparmor.sh \
     lib/jailrun/platform/sandbox-linux-systemd.sh \
     lib/jailrun/platform/sandbox-linux.sh \
+    lib/jailrun/platform/wsl2-detect.sh \
     lib/jailrun/proxy.py \
     lib/jailrun/ruleset.sh \
     lib/jailrun/sandbox.sh \

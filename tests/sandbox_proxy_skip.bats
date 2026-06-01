@@ -26,6 +26,9 @@ setup() {
   cp "$JAILRUN_LIB/netns-const.sh" "$_fake_lib/netns-const.sh"
   printf '#!/bin/sh\n# stub for tests\n' > "$_fake_lib/platform/sandbox-darwin.sh"
   printf '#!/bin/sh\n# stub for tests\n' > "$_fake_lib/platform/sandbox-linux.sh"
+  # sandbox.sh sources wsl2-detect.sh before platform dispatch (v0.6.0 Unit 004);
+  # provide a stub that always reports non-WSL2 so the new fail-closed guard no-ops.
+  printf '#!/bin/sh\n_is_wsl2() { return 1; }\n' > "$_fake_lib/platform/wsl2-detect.sh"
 
   # Default `ip` shim: `netns list` emits nothing -> _NETNS stays empty
   # (top-level launch block at sandbox.sh:384 is skipped).

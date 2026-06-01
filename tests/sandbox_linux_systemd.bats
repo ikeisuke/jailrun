@@ -251,10 +251,13 @@ run_build_sandbox_exec() {
 # used by props integration tests above.
 #
 # Helper: run _is_wsl2 with the given uname() body and return its exit code.
+# v0.6.0 Unit 004: _is_wsl2 was extracted to wsl2-detect.sh (no side effects)
+# so the contract tests source the helper directly without triggering AppArmor
+# detection or systemd-run fallback exits in the dispatcher.
 run_is_wsl2() {
   local _uname_body="$1"
   run sh -c '
-    . "'"$JAILRUN_LIB"'/platform/sandbox-linux-systemd.sh"
+    . "'"$JAILRUN_LIB"'/platform/wsl2-detect.sh"
     uname() { '"$_uname_body"'; }
     _is_wsl2
   '

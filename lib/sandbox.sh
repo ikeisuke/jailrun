@@ -179,6 +179,13 @@ done
 
 _sandbox_cmd=""
 
+# WSL2 detection helper sourced before platform dispatch so _is_wsl2 is
+# defined on both Linux and macOS. macOS uname -r doesn't match microsoft|wsl2
+# so the function returns 1 and downstream WSL2 guards no-op without polluting
+# stderr with "command not found". Required by the fail-closed agentns /
+# iptables checks added in v0.6.0 Unit 004.
+. "$JAILRUN_LIB/platform/wsl2-detect.sh"
+
 case "$(uname)" in
   Darwin) . "$JAILRUN_LIB/platform/sandbox-darwin.sh" ;;
   Linux)  . "$JAILRUN_LIB/platform/sandbox-linux.sh" ;;
@@ -494,15 +501,48 @@ _verify_proxy_readiness() {
   return 0
 }
 
+# Fail-closed: on WSL2, IPAddressDeny is silently ignored so agentns is
+# the only kernel-enforced network restriction.  Refuse to start when the
+# proxy expects network restriction but agentns is absent.
+if _is_wsl2 && _proxy_should_start && [ -z "$_NETNS" ]; then
+  echo "[$_WRAPPER_NAME] error: WSL2 network restriction requires agentns but namespace not found" >&2
+  echo "[$_WRAPPER_NAME] error: IPAddressDeny is ineffective on WSL2; proxy can be bypassed without agentns" >&2
+  echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to create the namespace" >&2
+  exit 1
+fi
+
+# Verify that agentns iptables OUTPUT policy is DROP.  Without this, the
+# namespace exists but traffic is not restricted (fail-open).
+_verify_agentns_iptables_policy() {
+  # Use grep -Fxq for a fixed-string full-line match so unrelated lines that
+  # happen to contain "-P OUTPUT DROP" (e.g. a -m comment rule) cannot satisfy
+  # the check — only the actual `-P OUTPUT DROP` policy line passes.
+  if ! sudo -n ip netns exec "$_NETNS" iptables -S OUTPUT 2>/dev/null \
+    | grep -Fxq -- '-P OUTPUT DROP'; then
+    echo "[$_WRAPPER_NAME] error: agentns iptables OUTPUT policy is not DROP" >&2
+    echo "[$_WRAPPER_NAME] hint: run 'sudo scripts/wsl2-netns-setup.sh' to restore iptables rules" >&2
+    return 1
+  fi
+}
+
 # Readiness launch blocks: when the namespace is active, first prove a
 # systemd-launched unit can actually enter it (user manager, or sudo fallback).
 # Then, only when the proxy will bind, verify the host-side veth resources.
+# The agentns iptables OUTPUT=DROP check is gated on _is_wsl2 (separate block
+# below) because IPAddressDeny is silently ignored on WSL2 but works on native
+# Linux — requiring sudo iptables on every Linux host would break compatibility.
 # Fail-closed: no host-net fallback.
 if [ -n "$_NETNS" ]; then
   _verify_netns_join_support || exit 1
 fi
 if [ -n "$_NETNS" ] && _proxy_should_start; then
   _verify_proxy_readiness || exit 1
+fi
+# WSL2-only: verify agentns OUTPUT policy is DROP. On native Linux the
+# systemd IPAddressDeny=any property enforces network restriction, so this
+# extra check is unnecessary (and would require sudo for every launch).
+if _is_wsl2 && [ -n "$_NETNS" ] && _proxy_should_start; then
+  _verify_agentns_iptables_policy || exit 1
 fi
 
 _start_proxy() {
