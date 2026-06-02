@@ -40,6 +40,8 @@ run_setup_sandbox() {
     _other_worktrees="'"${_other_worktrees:-}"'"
     _SANDBOX_ALLOW_WRITE_PATHS="'"${_SANDBOX_ALLOW_WRITE_PATHS:-}"'"
     _SANDBOX_DENY_READ_PATHS="'"${_SANDBOX_DENY_READ_PATHS:-}"'"
+    _NETNS="'"${_NETNS:-}"'"
+    JAILRUN_NETNS_HOST_IP="'"${JAILRUN_NETNS_HOST_IP:-10.200.0.1}"'"
     _WRAPPER_NAME="claude"
     export PROXY_ENABLED="'"${PROXY_ENABLED:-false}"'"
     _detect_git_worktree() { :; }
@@ -47,6 +49,20 @@ run_setup_sandbox() {
     _is_wsl2() { '"$_wsl_override"'; }
     _setup_sandbox
     cat "$_tmpdir/systemd-props"
+  '
+}
+
+run_build_sandbox_exec() {
+  local _mode="${1:-user}"
+  run sh -c '
+    _tmpdir="'"$_tmpdir"'"
+    printf "%s\n" "SET PATH=/usr/bin" > "$_tmpdir/env-spec"
+    printf "%s\n" "-p NetworkNamespacePath=/run/netns/agentns" > "$_tmpdir/systemd-props"
+    _SYSTEMD_RUN_MODE="'"$_mode"'"
+    _SYSTEMD_RUN_USER="jailrun-user"
+    _SYSTEMD_RUN_GROUP="jailrun-group"
+    . "'"$JAILRUN_LIB"'/platform/sandbox-linux-systemd.sh"
+    _build_sandbox_exec
   '
 }
 
@@ -121,6 +137,17 @@ run_setup_sandbox() {
   [[ "$output" == *"IPAddressDeny=any"* ]]
   [[ "$output" == *"IPAddressAllow=127.0.0.0/8"* ]]
   [[ "$output" == *"IPAddressAllow=::1/128"* ]]
+  [[ "$output" != *"IPAddressAllow=10.200.0.1/32"* ]]
+}
+
+@test "PROXY_ENABLED=true with netns allows host-side proxy IP" {
+  PROXY_ENABLED=true
+  _NETNS=agentns
+  JAILRUN_NETNS_HOST_IP=10.200.0.1
+  run_setup_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"IPAddressDeny=any"* ]]
+  [[ "$output" == *"IPAddressAllow=10.200.0.1/32"* ]]
 }
 
 @test "PROXY_ENABLED=1 adds IP address restrictions" {
@@ -224,10 +251,13 @@ run_setup_sandbox() {
 # used by props integration tests above.
 #
 # Helper: run _is_wsl2 with the given uname() body and return its exit code.
+# v0.6.0 Unit 004: _is_wsl2 was extracted to wsl2-detect.sh (no side effects)
+# so the contract tests source the helper directly without triggering AppArmor
+# detection or systemd-run fallback exits in the dispatcher.
 run_is_wsl2() {
   local _uname_body="$1"
   run sh -c '
-    . "'"$JAILRUN_LIB"'/platform/sandbox-linux-systemd.sh"
+    . "'"$JAILRUN_LIB"'/platform/wsl2-detect.sh"
     uname() { '"$_uname_body"'; }
     _is_wsl2
   '
@@ -270,4 +300,24 @@ run_is_wsl2() {
   _IS_WSL2_OVERRIDE="return 1" run_setup_sandbox
   [ "$status" -eq 0 ]
   [[ "$output" == *"PrivateDevices=yes"* ]]
+}
+
+# --- systemd-run command generation ---
+
+@test "_build_sandbox_exec uses user manager by default" {
+  run_build_sandbox_exec user
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"exec systemd-run"* ]]
+  [[ "$output" == *"--user --pty --wait --collect --same-dir"* ]]
+  [[ "$output" != *"sudo -n systemd-run"* ]]
+}
+
+@test "_build_sandbox_exec uses sudo systemd-run in root netns fallback mode" {
+  run_build_sandbox_exec root
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"exec sudo -n systemd-run"* ]]
+  [[ "$output" == *"--pty --wait --collect --same-dir"* ]]
+  [[ "$output" == *'User=jailrun-user'* ]]
+  [[ "$output" == *'Group=jailrun-group'* ]]
+  [[ "$output" != *"--user --pty"* ]]
 }

@@ -72,10 +72,12 @@ teardown() {
     lib/jailrun/platform/sandbox-linux-apparmor.sh \
     lib/jailrun/platform/sandbox-linux-systemd.sh \
     lib/jailrun/platform/sandbox-linux.sh \
+    lib/jailrun/platform/wsl2-detect.sh \
     lib/jailrun/proxy.py \
     lib/jailrun/ruleset.sh \
     lib/jailrun/sandbox.sh \
     lib/jailrun/shims/codex \
+    lib/jailrun/subcmd-registry.sh \
     lib/jailrun/token.sh \
     | sort)
   [ "$_expected" = "$_actual" ]

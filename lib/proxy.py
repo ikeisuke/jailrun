@@ -164,11 +164,11 @@ def handle_client(
             client.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
             return
 
-        # Filter out private IPs
+        # Filter out private IPs (skip for explicitly allowed domains)
         safe_addrs = []
         for family, socktype, proto, canonname, sockaddr in addrinfos:
             ip = sockaddr[0]
-            if is_private_ip(ip):
+            if is_private_ip(ip) and not match_domain(host, allowed_domains):
                 logger.warning("BLOCKED private-ip: %s -> %s from %s", host, ip, addr[0])
             else:
                 safe_addrs.append((family, socktype, proto, canonname, sockaddr))
@@ -216,7 +216,7 @@ def handle_client(
 def _scan_once(
     bind: str, start: int, end: int
 ) -> tuple[socket.socket | None, OSError | None]:
-    """Sequential bind scan across [start, end] without retry awareness.
+    """Sequential bind/listen scan across [start, end] without retry awareness.
 
     Absorbs only EADDRINUSE (race-recoverable). Non-EADDRINUSE OSErrors
     are re-raised immediately so non-recoverable failures (EACCES,
@@ -228,6 +228,7 @@ def _scan_once(
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((bind, candidate))
+            sock.listen(128)
             return sock, None
         except OSError as exc:
             sock.close()
@@ -278,6 +279,18 @@ def _bind_in_range(bind: str, start: int, end: int) -> socket.socket:
     ) from last_error
 
 
+def _bind_listening_socket(bind: str, port: int) -> socket.socket:
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        server.bind((bind, port))
+        server.listen(128)
+    except OSError:
+        server.close()
+        raise
+    return server
+
+
 def run_proxy(
     allowed_domains: set[str],
     port: int = 0,
@@ -303,15 +316,9 @@ def run_proxy(
                     f"requested port {port} is outside the configured proxy "
                     f"port range [{start}, {end}]"
                 )
-            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server.bind((bind, port))
+            server = _bind_listening_socket(bind, port)
     else:
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((bind, port))
-
-    server.listen(128)
+        server = _bind_listening_socket(bind, port)
 
     actual_port = server.getsockname()[1]
 

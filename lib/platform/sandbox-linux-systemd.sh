@@ -7,20 +7,10 @@
 #           $_git_common_dir, $_other_worktrees
 # Provides: _setup_sandbox(), _build_sandbox_exec()
 
-# Detect WSL2 host (Intent SoT: lowercase uname -r matches microsoft|wsl2).
-# Empty / failed uname -> exit 1 (treat as native). LC_ALL=C pins tr locale
-# (ASCII-only patterns). Variables scoped via `local` to avoid global leak.
-# Issue #90 / Unit 001.
-_is_wsl2() {
-  local _wsl_release _wsl_release_lc
-  _wsl_release=$(uname -r 2>/dev/null) || return 1
-  [ -n "$_wsl_release" ] || return 1
-  _wsl_release_lc=$(printf '%s' "$_wsl_release" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-  case "$_wsl_release_lc" in
-    *microsoft*|*wsl2*) return 0 ;;
-    *)                  return 1 ;;
-  esac
-}
+# WSL2 detection helper. Idempotent source (also sourced by lib/sandbox.sh
+# at Section 2 dispatch prefix) so standalone bats fixtures that source this
+# file directly still see _is_wsl2 defined. Issue #90 / extracted in v0.6.0 Unit 004.
+. "$JAILRUN_LIB/platform/wsl2-detect.sh"
 
 _setup_sandbox() {
   local _cwd="$PWD"
@@ -34,6 +24,9 @@ _setup_sandbox() {
   fi
 
   _sandbox_cmd="systemd-run"
+  if [ "${_SYSTEMD_RUN_MODE:-user}" = "root" ]; then
+    _sandbox_cmd="sudo -n systemd-run"
+  fi
   local _props="$_tmpdir/systemd-props"
   {
     # Prevent privilege escalation
@@ -62,11 +55,14 @@ _setup_sandbox() {
     # Network
     echo '-p PrivateNetwork=no'
     echo '-p RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6'
-    # When proxy is enabled, restrict to localhost only (proxy handles filtering)
+    # When proxy is enabled, restrict egress to the proxy endpoint only.
     if [ "${PROXY_ENABLED:-false}" = "true" ] || [ "${PROXY_ENABLED:-0}" = "1" ]; then
       echo '-p IPAddressDeny=any'
       echo '-p IPAddressAllow=127.0.0.0/8'
       echo '-p IPAddressAllow=::1/128'
+      if [ -n "${_NETNS:-}" ] && [ -n "${JAILRUN_NETNS_HOST_IP:-}" ]; then
+        echo "-p IPAddressAllow=$JAILRUN_NETNS_HOST_IP/32"
+      fi
     fi
     # When network namespace exists, join it (kernel-enforced network isolation)
     if [ -n "${_NETNS:-}" ]; then
@@ -201,9 +197,18 @@ _build_systemd_envfile() {
 _build_sandbox_exec() {
   _build_systemd_envfile
 
-  # --pty allocates a new PTY, so set OSC title from inside the PTY
-  printf 'exec systemd-run \\\n'
-  printf '  --user --pty --wait --collect --same-dir \\\n'
+  # --pty allocates a new PTY, so set OSC title from inside the PTY.
+  # In netns fallback mode, use the system manager via sudo so systemd can
+  # join /run/netns/agentns, then drop privileges back to the invoking user.
+  if [ "${_SYSTEMD_RUN_MODE:-user}" = "root" ]; then
+    printf 'exec sudo -n systemd-run \\\n'
+    printf '  --pty --wait --collect --same-dir \\\n'
+    printf '  -p "User=%s" \\\n' "$_SYSTEMD_RUN_USER"
+    printf '  -p "Group=%s" \\\n' "$_SYSTEMD_RUN_GROUP"
+  else
+    printf 'exec systemd-run \\\n'
+    printf '  --user --pty --wait --collect --same-dir \\\n'
+  fi
   printf '  -p "EnvironmentFile=%s/env-systemd" \\\n' "$_tmpdir"
   while IFS= read -r _line; do
     case "$_line" in

@@ -2,6 +2,12 @@
 
 @test "all scripts pass sh -n syntax check" {
   for f in bin/jailrun bin/bump-version lib/*.sh lib/platform/*.sh lib/shims/codex; do
+    # lib/subcmd-registry.sh is intentionally bash-only (uses bash arrays as SoT
+    # for agent subcmds, sourced by bin/jailrun which is bash). It is not meant
+    # to be parsed by /bin/sh, so skip the sh -n gate for this file only.
+    if [ "$(basename "$f")" = "subcmd-registry.sh" ]; then
+      continue
+    fi
     run sh -n "$f"
     if [ "$status" -ne 0 ]; then
       echo "FAIL: $f" >&2
