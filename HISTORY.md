@@ -1,5 +1,39 @@
 # Change History
 
+## v0.6.0 — セキュリティ強化サイクル: proxy listen TOCTOU / netns hardening / WSL2 fail-closed + subcmd registry + telemetry opt-in (2026-06-02)
+
+サンドボックスとプロキシまわりの fail-closed / hardening を中心に据えた 6 Unit のセキュリティ強化サイクル。proxy の bind/listen TOCTOU 解消、kiro-cli 用 `*.awsapps.com` ビルトイン追加、netns サンドボックス hardening、WSL2 を fail-closed で制限、`bin/jailrun` subcmd レジストリの単一情報源化、telemetry opt-in のデータ構造化までを実施。
+
+PR: https://github.com/ikeisuke/jailrun/pull/<TBD>
+
+### Changes
+
+#### Production
+
+- **`lib/proxy.py`**（Unit 001）: proxy bind/listen の TOCTOU を解消し、allowlist 内 private IP の透過を維持しつつ「allowlist 外 private IP は connect 段階で拒否」を明示。`_scan_once` / `_bind_in_range` の retry 経路を再整理。
+- **`lib/config.py`**（Unit 002 / Issue #105）: kiro-cli 用 BUILTIN_PROXY_DOMAINS に `*.awsapps.com`（IdC / SSO portal）を追加し、`GH_TOKEN_NAME` の environ 透過リークを env-spec 構築側でブロック。`match_domain()` の wildcard 契約に regression test を追加。
+- **`lib/sandbox.sh`**（Unit 003）: netns ベースの sandbox（Linux）を hardening。`mktemp -d` を `0700` で取り、proxy.log を必ず親側に救出。env-spec の単一引用エスケープを統一して shell 解釈差異を解消。
+- **`lib/platform/sandbox-linux-systemd.sh` / `lib/platform/wsl2-detect.sh`**（Unit 004）: WSL2 を fail-closed に切り替え。`_is_wsl2` を副作用なし helper `wsl2-detect.sh` に抽出し、iptables 検証は WSL2 限定で発動。`/proc/version` 行は `grep -Fxq` 相当の行全体一致で判定。
+- **`bin/jailrun` / `lib/subcmd-registry.sh`**（Unit 005 / Issue #102）: `bin/jailrun` の subcmd 解析を `lib/subcmd-registry.sh` 経由の単一情報源に変更。usage / dispatch / version 出力をレジストリから派生させ、subcmd 追加時の編集点を 1 箇所に集約。
+- **`lib/config.py`**（Unit 006 / Issue #101）: BUILTIN_PROXY_DOMAINS の telemetry opt-in を「平文 + コメント」から構造化レコード（`{"domain": ..., "category": "telemetry", "enabled": False, ...}`）へ移行し、リスト構築時に opt-in 値のみフィルタする経路に統一。
+
+#### Tests
+
+- **`tests/proxy_readiness.bats`**（Unit 001）: proxy listen TOCTOU regression を含む readiness 系を +315 行で大幅拡張。
+- **`tests/jailrun.bats`**（Unit 002 / Unit 005）: `match_domain` の wildcard 契約と subcmd レジストリ経由の usage / dispatch を bats で固定（新規 175 行）。
+- **`tests/sandbox_linux_systemd.bats` / `tests/passthrough_env.bats`**（Unit 003 / Unit 004）: netns 統合と WSL2 限定 iptables 検証、env passthrough 経路を追加検証。macOS 上での stderr 汚染確認テストも追加（Unit 004）。
+- **`tests/test_config.py` / `tests/test_proxy.py` / `tests/config.bats`**（Unit 006 / Unit 002）: telemetry opt-in データ構造の filter 経路と `match_domain` 仕様の unit test を更新。
+
+#### Documentation
+
+- **`README.md`**: 本サイクル分の差分（kiro-cli 向け `*.awsapps.com` ビルトイン / WSL2 fail-closed / subcmd registry / telemetry opt-in 構造化）を反映。
+- **`HISTORY.md`**: 本 v0.6.0 セクション追加。
+
+### Known issues / Follow-ups
+
+- Issue #104（type:defer-from-review）: Unit 001 関連、「proxy.py allowlist gating の表現改善・2 段防御化」を次サイクル以降で対応予定。
+- Issue #76（type:chore）: privileged Docker を使った systemd-run 実行テスト環境の構築は引き続きバックログに留置。
+
 ## v0.5.0 — Proxy default domains 拡張 + proxy retry 契約テスト + config dir 展開 + lib/config.sh eval 排除 + jailrun copilot subcmd 追加 (2026-05-17)
 
 mac 実機で 4 agent（claude / codex / gemini / copilot）の起動と日常運用が一通り回るようにするため、proxy デフォルト ドメイン拡張・proxy retry 契約のテスト固定化・config dir キーの `~` / `$HOME` 展開・`lib/config.sh` の `eval` 排除・`jailrun copilot` subcmd 追加（`--resume` 起動失敗 #67 の修正）を 4 Unit にまとめた minor リリース。
