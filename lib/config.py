@@ -69,8 +69,6 @@ BUILTIN_PROXY_DOMAINS: dict[str, list[str]] = {
         "chatgpt.com",
         "ab.chatgpt.com",
         "api.openai.com",
-        # Telemetry. Uncomment to allow.
-        # "http-intake.logs.us5.datadoghq.com",
     ],
     "codex": [
         "chatgpt.com",
@@ -100,8 +98,6 @@ BUILTIN_PROXY_DOMAINS: dict[str, list[str]] = {
         "cloudcode-pa.googleapis.com",
         # Direct Gemini API path (used when an API key is set instead of OAuth).
         "generativelanguage.googleapis.com",
-        # Telemetry. Uncomment to allow.
-        # "www.google-analytics.com",
     ],
 }
 # Common to every agent: GitHub-family + npm registry endpoints all CLIs need
@@ -122,6 +118,32 @@ BUILTIN_PROXY_DOMAINS_COMMON: list[str] = [
     "raw.githubusercontent.com",
     "registry.npmjs.org",
 ]
+
+# Telemetry-class opt-in domains per agent (Unit 006 / Issue #101).
+# Merged into the effective allowlist only when resolve_config() is called with
+# the keyword-only flag opt_in_telemetry=True. Kept disjoint from the
+# non-opt-in registries (BUILTIN_PROXY_DOMAINS / BUILTIN_PROXY_DOMAINS_COMMON);
+# see tests/test_config.py::test_opt_in_disjoint_from_non_opt_in.
+#
+# Naming convention: this dict is currently telemetry-specific. When a future
+# opt-in category is introduced, add a NEW dict
+# BUILTIN_PROXY_DOMAINS_OPT_IN_<FLAG_NAME> (e.g.
+# BUILTIN_PROXY_DOMAINS_OPT_IN_ANALYTICS) and a matching keyword-only flag on
+# resolve_config(). Do NOT rename this dict to preserve backward compatibility
+# for callers that import the symbol.
+#
+# Note: kiro-cli's "client-telemetry.us-east-1.amazonaws.com" carries
+# "telemetry" in its name but is required for AWS IAM Identity Center auth
+# state reporting and is therefore kept in the non-opt-in
+# BUILTIN_PROXY_DOMAINS["kiro-cli"] (see Unit 002 / Issue #80).
+BUILTIN_PROXY_DOMAINS_OPT_IN: dict[str, list[str]] = {
+    "claude": [
+        "http-intake.logs.us5.datadoghq.com",
+    ],
+    "gemini": [
+        "www.google-analytics.com",
+    ],
+}
 
 DEFAULT_TOML = """\
 # jailrun config (TOML format)
@@ -220,8 +242,42 @@ def merge_layer(base: dict, layer: dict, append_lists: bool = False) -> dict:
     return result
 
 
-def resolve_config(app: str = "", directory: str = "") -> dict:
-    """Load and merge config layers: defaults -> global -> profile -> app settings -> dir."""
+def resolve_config(
+    app: str = "",
+    directory: str = "",
+    *,
+    opt_in_telemetry: bool = False,
+) -> dict:
+    """Load and merge config layers: defaults -> global -> profile -> app settings -> dir.
+
+    Parameters:
+        app: agent name (claude / codex / kiro-cli / gemini / ...).
+        directory: current working directory used to match [dir."<path>"]
+            sections.
+        opt_in_telemetry: keyword-only. Must be exactly ``True`` (the
+            singleton) to enable merging of BUILTIN_PROXY_DOMAINS_OPT_IN[app]
+            into the effective proxy_allow_domains. Any other value — False,
+            None, truthy strings/ints, etc. — is treated as "disabled". This
+            strictness keeps the policy flag fail-safe: callers cannot
+            accidentally enable telemetry through a non-bool truthy value.
+
+    Returns: the effective config dict, initialized from DEFAULTS and
+        overlaid with the matching config layers (so the returned dict may
+        also contain extra keys present in the user's TOML).
+
+    Notes:
+        Passing an unknown opt-in flag name raises TypeError (Python's
+        standard behaviour for keyword-only arguments). When adding a new
+        opt-in category in the future, update all three together:
+            (1) define a new dict
+                BUILTIN_PROXY_DOMAINS_OPT_IN_<FLAG_NAME> at module level
+                (do NOT rename BUILTIN_PROXY_DOMAINS_OPT_IN);
+            (2) add a keyword-only parameter opt_in_<flag_name>: bool = False
+                to this function and merge the new dict under the same
+                proxy_enabled guard;
+            (3) extend tests/test_config.py's structural disjointness
+                invariant to include the new dict.
+    """
     result = copy.deepcopy(DEFAULTS)
 
     path = config_file()
@@ -290,11 +346,19 @@ def resolve_config(app: str = "", directory: str = "") -> dict:
             f"Must be one of: {', '.join(sorted(VALID_KEYCHAIN_PROFILES))}"
         )
 
-    # Merge built-in proxy domains (common + per-agent)
+    # Merge built-in proxy domains (common + per-agent + opt-in when enabled).
+    # opt_in_telemetry is gated by proxy_enabled so that the opt-in branch can
+    # never expand the allowlist when the proxy itself is disabled.
     if result.get("proxy_enabled"):
         builtin = list(BUILTIN_PROXY_DOMAINS_COMMON)
         if app and app in BUILTIN_PROXY_DOMAINS:
             builtin.extend(BUILTIN_PROXY_DOMAINS[app])
+        if (
+            opt_in_telemetry is True
+            and app
+            and app in BUILTIN_PROXY_DOMAINS_OPT_IN
+        ):
+            builtin.extend(BUILTIN_PROXY_DOMAINS_OPT_IN[app])
         existing = set(result.get("proxy_allow_domains", []))
         for d in builtin:
             if d not in existing:

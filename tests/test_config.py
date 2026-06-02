@@ -150,18 +150,42 @@ class BuiltinProxyDomainsTests(unittest.TestCase):
             len(set(config.BUILTIN_PROXY_DOMAINS_COMMON)),
         )
 
-    def test_telemetry_opt_in_excluded(self):
-        # Telemetry endpoints are commented out in source ("opt-in"); they must
-        # not appear as runtime list values until the user uncomments them.
-        all_values: set[str] = set(config.BUILTIN_PROXY_DOMAINS_COMMON)
-        for app_domains in config.BUILTIN_PROXY_DOMAINS.values():
-            all_values.update(app_domains)
-        for d in ("http-intake.logs.us5.datadoghq.com", "www.google-analytics.com"):
-            self.assertNotIn(
-                d,
-                all_values,
-                f"telemetry endpoint {d} must remain opt-in (commented out in source)",
-            )
+    def test_opt_in_structure_pin(self):
+        # Unit 006 / Issue #101: pin the full opt-in registry so any drift in
+        # the per-agent telemetry endpoint set is caught by tests.
+        self.assertEqual(
+            config.BUILTIN_PROXY_DOMAINS_OPT_IN,
+            {
+                "claude": ["http-intake.logs.us5.datadoghq.com"],
+                "gemini": ["www.google-analytics.com"],
+            },
+        )
+
+    def test_opt_in_disjoint_from_non_opt_in(self):
+        # Unit 006 structural invariant: the opt-in registry must never share
+        # any domain with the non-opt-in registries. A future telemetry domain
+        # accidentally added to BUILTIN_PROXY_DOMAINS (or vice versa) must
+        # fail this assertion.
+        non_opt_in: set[str] = set(config.BUILTIN_PROXY_DOMAINS_COMMON)
+        for domains in config.BUILTIN_PROXY_DOMAINS.values():
+            non_opt_in.update(domains)
+        opt_in: set[str] = set()
+        for domains in config.BUILTIN_PROXY_DOMAINS_OPT_IN.values():
+            opt_in.update(domains)
+        intersection = non_opt_in & opt_in
+        self.assertEqual(
+            intersection, set(),
+            f"opt-in and non-opt-in registries must not overlap; "
+            f"found duplicates: {sorted(intersection)}",
+        )
+
+    def test_kiro_cli_awsapps_not_in_opt_in(self):
+        # Unit 002 added "*.awsapps.com" to the kiro-cli non-opt-in entry for
+        # IAM Identity Center auth. Guard against accidental migration into
+        # the opt-in registry during refactors.
+        opt_in_kiro = config.BUILTIN_PROXY_DOMAINS_OPT_IN.get("kiro-cli", [])
+        self.assertNotIn("*.awsapps.com", opt_in_kiro)
+        self.assertIn("*.awsapps.com", config.BUILTIN_PROXY_DOMAINS["kiro-cli"])
 
 
 class ResolveConfigMergeTests(unittest.TestCase):
@@ -249,6 +273,112 @@ class ResolveConfigMergeTests(unittest.TestCase):
         result = config.resolve_config(app="some-unknown-agent")
         merged = set(result.get("proxy_allow_domains", []))
         self.assertEqual(merged, set(config.BUILTIN_PROXY_DOMAINS_COMMON))
+
+    # ------------------------------------------------------------------
+    # Unit 006 / Issue #101: opt-in telemetry merge contract.
+    # ------------------------------------------------------------------
+
+    def test_opt_in_default_excluded(self):
+        # With proxy enabled but opt_in_telemetry omitted (default False),
+        # telemetry endpoints must not appear in the effective allowlist.
+        self._write('[global]\nproxy_enabled = true\n')
+        result = config.resolve_config(app="claude")
+        merged = result.get("proxy_allow_domains", [])
+        self.assertNotIn("http-intake.logs.us5.datadoghq.com", merged)
+        # Explicit False behaves identically.
+        result2 = config.resolve_config(app="claude", opt_in_telemetry=False)
+        self.assertNotIn(
+            "http-intake.logs.us5.datadoghq.com",
+            result2.get("proxy_allow_domains", []),
+        )
+
+    def test_opt_in_telemetry_enabled_includes(self):
+        # opt_in_telemetry=True must add the agent's opt-in domains AND keep
+        # the existing non-opt-in domains.
+        self._write('[global]\nproxy_enabled = true\n')
+        result = config.resolve_config(app="claude", opt_in_telemetry=True)
+        merged = result.get("proxy_allow_domains", [])
+        self.assertIn("http-intake.logs.us5.datadoghq.com", merged)
+        self.assertIn("api.anthropic.com", merged)
+
+    def test_opt_in_does_not_affect_non_opt_in(self):
+        # Toggling opt_in_telemetry must only add opt-in domains; the
+        # non-opt-in slice (COMMON + per-agent non-opt-in) must stay invariant.
+        self._write('[global]\nproxy_enabled = true\n')
+        result_off = config.resolve_config(app="claude")
+        result_on = config.resolve_config(app="claude", opt_in_telemetry=True)
+        non_opt_in_set = set(config.BUILTIN_PROXY_DOMAINS_COMMON) | set(
+            config.BUILTIN_PROXY_DOMAINS["claude"]
+        )
+        merged_off = set(result_off.get("proxy_allow_domains", []))
+        merged_on = set(result_on.get("proxy_allow_domains", []))
+        self.assertEqual(merged_off, non_opt_in_set)
+        expected_on = non_opt_in_set | set(
+            config.BUILTIN_PROXY_DOMAINS_OPT_IN["claude"]
+        )
+        self.assertEqual(merged_on, expected_on)
+        # Non-opt-in portion is unchanged between off and on.
+        self.assertEqual(
+            merged_on - set(config.BUILTIN_PROXY_DOMAINS_OPT_IN["claude"]),
+            merged_off,
+        )
+
+    def test_opt_in_telemetry_proxy_disabled_does_not_merge(self):
+        # proxy_enabled=False short-circuits the whole builtin merge, including
+        # the opt-in branch. Even with opt_in_telemetry=True, the user list
+        # must remain untouched.
+        self._write(
+            '[global]\n'
+            'proxy_enabled = false\n'
+            'proxy_allow_domains = ["only.example.com"]\n'
+        )
+        result = config.resolve_config(app="claude", opt_in_telemetry=True)
+        self.assertEqual(
+            result.get("proxy_allow_domains"),
+            ["only.example.com"],
+        )
+
+    def test_opt_in_telemetry_for_agent_without_opt_in_noop(self):
+        # codex / kiro-cli do not appear in BUILTIN_PROXY_DOMAINS_OPT_IN. With
+        # opt_in_telemetry=True the effective allowlist is identical to off.
+        self._write('[global]\nproxy_enabled = true\n')
+        for app in ("codex", "kiro-cli"):
+            with self.subTest(app=app):
+                off = set(
+                    config.resolve_config(app=app).get(
+                        "proxy_allow_domains", []
+                    )
+                )
+                on = set(
+                    config.resolve_config(
+                        app=app, opt_in_telemetry=True
+                    ).get("proxy_allow_domains", [])
+                )
+                self.assertEqual(off, on)
+
+    def test_opt_in_telemetry_keyword_only(self):
+        # opt_in_telemetry must be keyword-only: a positional True after
+        # (app, directory) must raise TypeError rather than silently enable
+        # telemetry merging.
+        self._write('[global]\nproxy_enabled = true\n')
+        with self.assertRaises(TypeError):
+            config.resolve_config("claude", "", True)  # noqa: ASYM
+
+    def test_opt_in_telemetry_non_true_values_do_not_enable(self):
+        # The opt-in branch uses `is True` (not truthy check) so that a
+        # non-bool truthy value (e.g. string "false", int 1, list [True])
+        # cannot silently enable telemetry merging. Defensive: keeps the
+        # policy flag fail-safe under caller mistakes.
+        self._write('[global]\nproxy_enabled = true\n')
+        for sneaky in ("false", "True", 1, [True], object()):
+            with self.subTest(value=sneaky):
+                result = config.resolve_config(
+                    app="claude", opt_in_telemetry=sneaky
+                )
+                self.assertNotIn(
+                    "http-intake.logs.us5.datadoghq.com",
+                    result.get("proxy_allow_domains", []),
+                )
 
 
 if __name__ == "__main__":
