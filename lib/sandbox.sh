@@ -191,6 +191,19 @@ case "$(uname)" in
   Linux)  . "$JAILRUN_LIB/platform/sandbox-linux.sh" ;;
 esac
 
+# Source token.sh (no-dispatch) to obtain _get_token for SANDBOX_SECRET_INJECT.
+# The runtime already runs under `set -eu` (agent-wrapper.sh), so token.sh's
+# `set -eu` is a no-op here; the NODISPATCH guard skips its CLI dispatch.
+# Guarded on presence: token.sh is always installed alongside sandbox.sh in
+# production, but isolation test fixtures source sandbox.sh from a minimal
+# fake lib. When absent, _get_token is undefined and secret-inject simply
+# finds no values (warn+skip), which is harmless for those fixtures.
+if [ -f "$JAILRUN_LIB/token.sh" ]; then
+  _JAILRUN_TOKEN_NODISPATCH=1
+  . "$JAILRUN_LIB/token.sh"
+  unset _JAILRUN_TOKEN_NODISPATCH
+fi
+
 # ============================================================
 # Section 3: Environment spec generation (env-spec)
 # ============================================================
@@ -208,9 +221,149 @@ _esc_env_value() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g'
 }
 
+# Single source of truth for reserved credential variable names that the
+# sandbox explicitly manages. Shared by the SANDBOX_PASSTHROUGH_ENV loop
+# (reserved -> warn+skip) and SANDBOX_SECRET_INJECT (reserved -> warn+allow),
+# guaranteeing both use an identical set. Wildcards SANDBOX_* / AWS_* are NOT
+# reserved (intentionally absent, matching legacy behaviour).
+# Returns 0 if reserved, 1 otherwise.
+_is_reserved_env_name() {
+  case "$1" in
+    AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|\
+    AWS_PROFILE|AWS_DEFAULT_PROFILE|AWS_ROLE_ARN|AWS_ROLE_SESSION_NAME|\
+    AWS_CONFIG_FILE|AWS_SHARED_CREDENTIALS_FILE|\
+    GH_TOKEN|GITHUB_TOKEN|GH_CONFIG_DIR|\
+    SSH_AUTH_SOCK|DBUS_SESSION_BUS_ADDRESS|\
+    PATH|GIT_ASKPASS|GIT_TERMINAL_PROMPT|\
+    GIT_CONFIG_COUNT|GIT_CONFIG_KEY_*|GIT_CONFIG_VALUE_*|\
+    _CREDENTIAL_GUARD_SANDBOXED)
+      return 0 ;;
+  esac
+  return 1
+}
+
+# Stage A (resolution): parse SANDBOX_SECRET_INJECT, fetch each declared secret
+# from the keychain, classify anomalies, and buffer the SET lines to inject.
+# Produces NO env-spec output itself; the caller emits the buffered lines.
+#
+# Outputs (globals):
+#   _SECRET_INJECT_SPEC_FILE                : file holding `SET <ENV>=<esc>` lines
+#   _SECRET_INJECT_GH_INJECTED              : true if GH_TOKEN was injected here
+#   _SECRET_INJECT_GH_EFFECTIVE_FROM_SECRET : true if GH_TOKEN is effective via secret
+# Returns: 0 on success, 1 to request abort (duplicate env declared).
+_resolve_secret_inject() {
+  # Force C locale so the [A-Z]/[A-Z0-9_] case ranges below are strict ASCII.
+  # Under some locales (e.g. ja_JP.UTF-8) [A-Z] collates lowercase letters too,
+  # which would wrongly accept "foo:id". `local` scopes the override.
+  local LC_ALL=C
+  _SECRET_INJECT_SPEC_FILE="$_tmpdir/secret-inject-spec"
+  : > "$_SECRET_INJECT_SPEC_FILE"
+  _SECRET_INJECT_GH_INJECTED=false
+  _SECRET_INJECT_GH_EFFECTIVE_FROM_SECRET=false
+  _si_seen=" "
+  _si_cr=$(printf '\r')
+
+  for _si_entry in ${SANDBOX_SECRET_INJECT:-}; do
+    _si_env="${_si_entry%%:*}"
+    _si_id="${_si_entry#*:}"
+
+    # --- syntax validation: ENVVAR:identifier, env=[A-Z][A-Z0-9_]*, single id ---
+    case "$_si_entry" in
+      *:*) ;;
+      *) echo "[$_WRAPPER_NAME] WARN: skipping invalid secret-inject entry (missing ':'): $_si_entry" >&2
+         continue ;;
+    esac
+    if [ -z "$_si_id" ]; then
+      echo "[$_WRAPPER_NAME] WARN: skipping invalid secret-inject entry (empty identifier): $_si_entry" >&2
+      continue
+    fi
+    case "$_si_id" in
+      *:*) echo "[$_WRAPPER_NAME] WARN: skipping invalid secret-inject entry (identifier contains ':'): $_si_entry" >&2
+           continue ;;
+    esac
+    case "$_si_env" in
+      [A-Z]*) ;;
+      *) echo "[$_WRAPPER_NAME] WARN: skipping invalid secret-inject entry (invalid env name): $_si_entry" >&2
+         continue ;;
+    esac
+    case "$_si_env" in
+      *[!A-Z0-9_]*)
+        echo "[$_WRAPPER_NAME] WARN: skipping invalid secret-inject entry (invalid env name): $_si_entry" >&2
+        continue ;;
+    esac
+
+    # --- duplicate env detection -> abort ---
+    case "$_si_seen" in
+      *" $_si_env "*)
+        echo "[$_WRAPPER_NAME] ERROR: duplicate env in SANDBOX_SECRET_INJECT: $_si_env" >&2
+        return 1 ;;
+    esac
+    _si_seen="$_si_seen$_si_env "
+
+    # --- reserved name (non GH_TOKEN) -> warn + allow override ---
+    if _is_reserved_env_name "$_si_env" && [ "$_si_env" != GH_TOKEN ]; then
+      echo "[$_WRAPPER_NAME] WARN: overriding reserved variable via SANDBOX_SECRET_INJECT: $_si_env" >&2
+    fi
+
+    # --- fetch into a temp file (|| true so a non-zero _get_token does not
+    # abort under set -e). A file is used because command substitution strips
+    # trailing newlines, which would hide a trailing-LF value and inject a
+    # silently-truncated secret. ---
+    _si_valfile="$_tmpdir/secret-inject-val"
+    _get_token "jailrun:$_si_env:$_si_id" > "$_si_valfile" 2>/dev/null || true
+    if [ ! -s "$_si_valfile" ]; then
+      rm -f "$_si_valfile"
+      echo "[$_WRAPPER_NAME] WARN: skipping $_si_env (identifier not found in keychain)" >&2
+      continue
+    fi
+
+    # --- reject values containing LF or CR (protect the line-based env-spec).
+    # Detected on the raw file bytes: wc -l counts LFs (incl. a trailing one),
+    # grep matches a CR. ---
+    _si_lfcount=$(wc -l < "$_si_valfile" | tr -d '[:space:]')
+    if [ "${_si_lfcount:-0}" != 0 ] || grep -q "$_si_cr" "$_si_valfile"; then
+      rm -f "$_si_valfile"
+      echo "[$_WRAPPER_NAME] WARN: skipping $_si_env (value contains newlines)" >&2
+      continue
+    fi
+    _si_val=$(cat "$_si_valfile")
+    # Drop the raw secret file immediately; the value now lives only in _si_val
+    # (and, once injected, in env-spec). Skipped secrets never persist here.
+    rm -f "$_si_valfile"
+
+    # --- GH_TOKEN success: warn (last-wins visibility, intent confirmed) ---
+    if [ "$_si_env" = GH_TOKEN ]; then
+      echo "[$_WRAPPER_NAME] WARN: overriding existing GH_TOKEN handling via SANDBOX_SECRET_INJECT (secret-inject wins)" >&2
+    fi
+
+    printf 'SET %s=%s\n' "$_si_env" "$(_esc_env_value "$_si_val")" >> "$_SECRET_INJECT_SPEC_FILE"
+    if [ "$_si_env" = GH_TOKEN ]; then
+      _SECRET_INJECT_GH_INJECTED=true
+      _SECRET_INJECT_GH_EFFECTIVE_FROM_SECRET=true
+    fi
+  done
+  return 0
+}
+
 # generate env var spec file (SET/UNSET format)
 _build_env_spec() {
   local _spec="$_tmpdir/env-spec"
+
+  # Stage A: resolve SANDBOX_SECRET_INJECT before the redirection group below.
+  # `> "$_spec"` truncates/creates env-spec when the group starts, so resolving
+  # first keeps env-spec ungenerated on a duplicate-env abort. It also fixes the
+  # GH_TOKEN suppression flags before the GH_TOKEN block is emitted.
+  if ! _resolve_secret_inject; then
+    return 1
+  fi
+  # GH_TOKEN "effective" (git-askpass) is source-independent: secret-injected,
+  # or an existing _gh_token (declared-but-skipped falls back to _gh_token here).
+  local _gh_effective=false
+  if [ "$_SECRET_INJECT_GH_EFFECTIVE_FROM_SECRET" = true ]; then
+    _gh_effective=true
+  elif [ -n "$_gh_token" ]; then
+    _gh_effective=true
+  fi
   {
     echo 'UNSET AWS_ACCESS_KEY_ID'
     echo 'UNSET AWS_SECRET_ACCESS_KEY'
@@ -248,9 +401,14 @@ _build_env_spec() {
       echo 'SET SSL_CERT_FILE=/etc/ssl/cert.pem'
     fi
     printf 'SET PATH=%s\n' "$(_esc_env_value "$JAILRUN_LIB/shims:$PATH")"
-    if [ -n "$_gh_token" ]; then
+    # GH_TOKEN block: condition-split so git-askpass follows "effective" state
+    # (source-independent) while the existing SET GH_TOKEN= is suppressed when
+    # secret-inject injects GH_TOKEN (last-wins, single source of truth).
+    if [ "$_gh_effective" = true ]; then
       _build_git_askpass
-      printf 'SET GH_TOKEN=%s\n' "$(_esc_env_value "$_gh_token")"
+      if [ "$_SECRET_INJECT_GH_INJECTED" != true ]; then
+        printf 'SET GH_TOKEN=%s\n' "$(_esc_env_value "$_gh_token")"
+      fi
       printf 'SET GIT_ASKPASS=%s/git-askpass\n' "$_tmpdir"
       echo 'SET GIT_TERMINAL_PROMPT=0'
       echo 'SET GIT_CONFIG_COUNT=2'
@@ -276,18 +434,10 @@ _build_env_spec() {
     # Values are escaped for safe embedding in double-quoted shell context
     for _var in $SANDBOX_PASSTHROUGH_ENV; do
       # Block reserved credential variables that the sandbox explicitly manages
-      case "$_var" in
-        AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|\
-        AWS_PROFILE|AWS_DEFAULT_PROFILE|AWS_ROLE_ARN|AWS_ROLE_SESSION_NAME|\
-        AWS_CONFIG_FILE|AWS_SHARED_CREDENTIALS_FILE|\
-        GH_TOKEN|GITHUB_TOKEN|GH_CONFIG_DIR|\
-        SSH_AUTH_SOCK|DBUS_SESSION_BUS_ADDRESS|\
-        PATH|GIT_ASKPASS|GIT_TERMINAL_PROMPT|\
-        GIT_CONFIG_COUNT|GIT_CONFIG_KEY_*|GIT_CONFIG_VALUE_*|\
-        _CREDENTIAL_GUARD_SANDBOXED)
-          echo "[$_WRAPPER_NAME] WARN: ignoring reserved variable in SANDBOX_PASSTHROUGH_ENV: $_var" >&2
-          continue ;;
-      esac
+      if _is_reserved_env_name "$_var"; then
+        echo "[$_WRAPPER_NAME] WARN: ignoring reserved variable in SANDBOX_PASSTHROUGH_ENV: $_var" >&2
+        continue
+      fi
       # Validate variable name is a valid shell identifier
       case "$_var" in
         [!A-Za-z_]*|*[!A-Za-z0-9_]*)
@@ -306,6 +456,12 @@ _build_env_spec() {
         printf 'SET %s=%s\n' "$_var" "$_escaped"
       fi
     done
+    # Secret-inject lines (resolved in stage A). Emitted last so a GH_TOKEN
+    # secret value wins over the existing block, and reserved overrides win
+    # over their fixed SET lines (last-wins).
+    if [ -s "$_SECRET_INJECT_SPEC_FILE" ]; then
+      cat "$_SECRET_INJECT_SPEC_FILE"
+    fi
   } > "$_spec"
 }
 
