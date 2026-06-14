@@ -1,5 +1,35 @@
 # Change History
 
+## v0.7.0 — シークレットストアからの汎用環境変数注入機構（SANDBOX_SECRET_INJECT） + GH_TOKEN 特例の汎用化 (2026-06-14)
+
+これまで `GH_TOKEN` のみ特殊処理で行っていた「シークレットストア（macOS Keychain / Linux GNOME Keyring）からサンドボックスへの値注入」を一般化し、`jailrun:<環境変数名>:<identifier>` スキームで任意の環境変数を宣言的に注入できる汎用機構 `SANDBOX_SECRET_INJECT`（TOML 正本キー `sandbox_secret_inject`）を追加した 2 Unit の minor リリース。`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 等を、ホストの平文環境変数に置かず config 宣言のみで持ち込めるようになる。既存 `GH_TOKEN` 経路は後方互換を維持しつつ、secret-inject 宣言時は後勝ち上書き + git-askpass セットアップ条件をソース非依存に拡張した。
+
+PR: https://github.com/ikeisuke/jailrun/pull/<TBD>
+
+### Changes
+
+#### Production
+
+- **`lib/config-defaults.sh`**（Unit 001）: `sandbox_secret_inject` を list 型キーとして `_KNOWN_KEYS` / `_LIST_KEYS` に追加し、`config` サブコマンドの `--append` / `--remove` に対応。
+- **`lib/config.py`**（Unit 001）: `DEFAULTS` / `LIST_KEYS` / `KNOWN_KEYS` に `sandbox_secret_inject` を追加。`to_shell()` の `.upper()` 変換規則（`sandbox_passthrough_env` → `SANDBOX_PASSTHROUGH_ENV` と同系）により runtime export で `SANDBOX_SECRET_INJECT` となる。
+- **`lib/config_migrate.py`**（Unit 001）: 新キーをマイグレーション対象に追加。
+- **`lib/sandbox.sh`**（Unit 002）: secret-inject 注入層を追加。`SANDBOX_SECRET_INJECT` の各 `ENV:identifier` エントリを `_get_token "jailrun:<env>:<id>"` で取得し、env-spec ビルドに `SET <ENV>=<esc値>`（`_esc_env_value()` でエスケープ）として追加。エラー挙動を既存 `SANDBOX_PASSTHROUGH_ENV` バリデーションに倣って実装（未登録 identifier / 予約名衝突 / 構文不正マッピング / 改行値 = warn+skip、重複 env 宣言 = abort）。`GH_TOKEN` 特例として、secret-inject 値が取得成功した場合は既存 `_gh_token` 経路の `SET GH_TOKEN=` を抑止して後勝ちで単一の真実とし、git-askpass セットアップ条件を「GH_TOKEN が実質有効」（ソース非依存 3 分岐）へ拡張。
+
+#### Tests
+
+- **`tests/secret_inject.bats`**（Unit 002）: 注入成功 / 各エラー挙動（未登録・予約名衝突・構文不正・重複・改行）/ GH_TOKEN 特例（後勝ち・skip 時フォールバック・git-askpass 3 分岐）を網羅する新規 284 行。
+- **`tests/config.bats` / `tests/test_config.py` / `tests/test_config_cli.py` / `tests/test_config_migrate.py`**（Unit 001）: `sandbox_secret_inject` の config ロード / バリデーション / CLI（`--append` / `--remove`）/ マイグレーション経路を検証。
+
+#### Documentation
+
+- **`README.md`**: シークレットストアへの登録（`jailrun token add`）から `sandbox_secret_inject` 宣言、サンドボックス内注入までのフローと挙動ポリシーを追記。
+- **`HISTORY.md`**: 本 v0.7.0 セクション追加。
+
+### Known issues / Follow-ups
+
+- Issue #104（type:defer-from-review）: 「proxy.py allowlist gating の表現改善・2 段防御化」（v0.6.0 Unit 001 defer）は次サイクル以降で対応予定。
+- Issue #76（type:chore）ほか中長期バックログ（#75 / #46 / #39 / #34 / #33 / #32 / #31 / #28）は引き続き留置。
+
 ## v0.6.0 — セキュリティ強化サイクル: proxy listen TOCTOU / netns hardening / WSL2 fail-closed + subcmd registry + telemetry opt-in (2026-06-02)
 
 サンドボックスとプロキシまわりの fail-closed / hardening を中心に据えた 6 Unit のセキュリティ強化サイクル。proxy の bind/listen TOCTOU 解消、kiro-cli 用 `*.awsapps.com` ビルトイン追加、netns サンドボックス hardening、WSL2 を fail-closed で制限、`bin/jailrun` subcmd レジストリの単一情報源化、telemetry opt-in のデータ構造化までを実施。
