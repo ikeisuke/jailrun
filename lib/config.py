@@ -37,6 +37,7 @@ DEFAULTS: dict = {
     "sandbox_extra_allow_write": [],
     "sandbox_extra_allow_write_files": [],
     "sandbox_passthrough_env": [],
+    "sandbox_secret_inject": [],
     "proxy_enabled": False,
     "proxy_allow_domains": [],
     "keychain_profile": "allow",
@@ -51,6 +52,7 @@ LIST_KEYS = {
     "sandbox_extra_allow_write",
     "sandbox_extra_allow_write_files",
     "sandbox_passthrough_env",
+    "sandbox_secret_inject",
     "proxy_allow_domains",
 }
 
@@ -169,6 +171,11 @@ default_aws_profile = "default"
 
 # environment variables to pass through to sandbox
 # sandbox_passthrough_env = ["ANTHROPIC_API_KEY"]
+
+# inject secrets from the keychain as env vars (ENVVAR:identifier list).
+# Each entry resolves jailrun:<ENVVAR>:<identifier> and is set as <ENVVAR>
+# inside the sandbox (runtime injection handled separately).
+# sandbox_secret_inject = ["OPENAI_API_KEY:default"]
 
 # --- Keychain access profile (macOS only) ---
 # Controls ~/Library/Keychains write access in the Seatbelt sandbox.

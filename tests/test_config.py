@@ -381,5 +381,37 @@ class ResolveConfigMergeTests(unittest.TestCase):
                 )
 
 
+class SandboxSecretInjectKeyTests(unittest.TestCase):
+    """Unit 001 (#108): sandbox_secret_inject list-type config key.
+
+    Verifies the declaration layer only: the key is registered as a
+    list-type default and round-trips through to_shell() as the uppercase
+    SANDBOX_SECRET_INJECT envelope key. Semantic validation / injection is
+    out of scope (Unit 002)."""
+
+    def test_default_is_empty_list(self):
+        self.assertIn("sandbox_secret_inject", config.DEFAULTS)
+        self.assertEqual(config.DEFAULTS["sandbox_secret_inject"], [])
+
+    def test_registered_as_list_key(self):
+        self.assertIn("sandbox_secret_inject", config.LIST_KEYS)
+
+    def test_present_in_known_keys(self):
+        self.assertIn("sandbox_secret_inject", config.KNOWN_KEYS)
+
+    def test_to_shell_uppercases_and_joins(self):
+        out = config.to_shell(
+            {"sandbox_secret_inject": ["OPENAI_API_KEY:default", "ANTHROPIC_API_KEY:work"]}
+        )
+        self.assertIn(
+            "SANDBOX_SECRET_INJECT=OPENAI_API_KEY:default ANTHROPIC_API_KEY:work",
+            out,
+        )
+
+    def test_to_shell_empty_list_yields_empty_value(self):
+        out = config.to_shell({"sandbox_secret_inject": []})
+        self.assertIn("SANDBOX_SECRET_INJECT=", out)
+
+
 if __name__ == "__main__":
     unittest.main()

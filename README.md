@@ -58,7 +58,8 @@ Config file: `~/.config/jailrun/config.toml`
 | `sandbox_extra_deny_read` | list | `[]` | Additional read-deny paths (23 paths blocked by default) |
 | `sandbox_extra_allow_write` | list | `[]` | Additional write-allow directories |
 | `sandbox_extra_allow_write_files` | list | `[]` | Additional write-allow files |
-| `sandbox_passthrough_env` | list | `[]` | Env vars to pass through to sandbox |
+| `sandbox_passthrough_env` | list | `[]` | Host env vars to pass through to sandbox |
+| `sandbox_secret_inject` | list | `[]` | `ENVVAR:identifier` entries injected from the secret store (see [Secret Injection](#secret-injection-sandbox_secret_inject)) |
 
 ### Environment Variable Overrides
 
@@ -70,6 +71,60 @@ Some config keys can be overridden at runtime via environment variables:
 | `AWS_PROFILE` | `default_aws_profile` | `AWS_PROFILE=dev jailrun claude` |
 | `GH_TOKEN_NAME` | `gh_token_name` | `GH_TOKEN_NAME=fine-grained jailrun claude` |
 | `SANDBOX_PASSTHROUGH_ENV` | `sandbox_passthrough_env` | `SANDBOX_PASSTHROUGH_ENV="KEY1 KEY2" jailrun claude` |
+
+### Secret Injection (`sandbox_secret_inject`)
+
+Inject arbitrary environment variables into the sandbox from the OS secret store
+(macOS Keychain / Linux GNOME Keyring) — without ever placing the secret in a
+host plaintext env var or in `config.toml`. Only the env-var name and a
+reference *identifier* are stored in config; the value is fetched at launch.
+
+**Register → declare → inject:**
+
+```bash
+# 1. Store the secret in the OS keychain under jailrun:<ENVVAR>:<identifier>
+jailrun token add --name OPENAI_API_KEY:default
+
+# 2. Declare the mapping in ~/.config/jailrun/config.toml
+#    (runtime export is the uppercased SANDBOX_SECRET_INJECT)
+```
+
+```toml
+sandbox_secret_inject = ["OPENAI_API_KEY:default", "ANTHROPIC_API_KEY:work"]
+```
+
+```bash
+# 3. Launch — the value is read from the keychain and exported inside the sandbox
+jailrun claude   # sees OPENAI_API_KEY / ANTHROPIC_API_KEY
+```
+
+**Mapping syntax** — space-separated `ENVVAR:identifier` entries:
+
+- `ENVVAR` must match `[A-Z][A-Z0-9_]*` (uppercase env name).
+- `identifier` is a single token (no `:`); the keychain service name is
+  `jailrun:<ENVVAR>:<identifier>`.
+
+**Behaviour policy:**
+
+| Situation | Behaviour |
+|-----------|-----------|
+| Identifier not in keychain | warn + skip (startup continues) |
+| Syntax-invalid entry (`FOO`, `FOO:`, `:id`, `foo:id`, `FOO:a:b`) | warn + skip |
+| Duplicate env name (`FOO:a FOO:b`) | abort at startup (declaration mistake) |
+| Reserved name (same set the sandbox manages, e.g. `PATH`) | warn + allow (override) |
+| Value contains a newline (LF/CR) | warn + skip |
+
+Secret values are never written to logs or warnings (only the env name /
+identifier appear). `SANDBOX_*` and `AWS_*` are **not** treated as reserved.
+
+**`GH_TOKEN` special case** — interoperates with the existing GitHub PAT flow:
+
+- Declaring `GH_TOKEN:<id>` and fetching it **successfully** wins: jailrun warns,
+  suppresses the legacy `GH_TOKEN` injection, and `git-askpass` follows the
+  secret-inject value. This works even when no legacy token is configured.
+- If the `GH_TOKEN` entry is **skipped** (unregistered / invalid / newline),
+  jailrun falls back to the existing GitHub PAT path unchanged.
+- Not declaring `GH_TOKEN` leaves the existing behaviour fully intact.
 
 ### AWS Profile Priority
 

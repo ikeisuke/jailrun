@@ -254,3 +254,40 @@ EOF
   [[ "$output" == *"github.com"* ]]
   [[ "$output" == *"registry.npmjs.org"* ]]
 }
+
+# (vii) Unit 001 (#108): sandbox_secret_inject (list key) is exported as the
+#       uppercase SANDBOX_SECRET_INJECT envelope key (declaration layer only).
+@test "config.sh (vii) exports SANDBOX_SECRET_INJECT from TOML list key" {
+  mkdir -p "$TEST_CONFIG_DIR/jailrun"
+  cat > "$TEST_CONFIG_DIR/jailrun/config.toml" <<'EOF'
+[global]
+sandbox_secret_inject = ["OPENAI_API_KEY:default", "ANTHROPIC_API_KEY:work"]
+EOF
+
+  run sh -c '
+    export XDG_CONFIG_HOME="'"$TEST_CONFIG_DIR"'"
+    export JAILRUN_LIB="'"$JAILRUN_LIB"'"
+    export WRAPPER_NAME=claude
+    . "'"$JAILRUN_LIB"'/config.sh"
+    printf "secret=%s\n" "$SANDBOX_SECRET_INJECT"
+  '
+  [ "$status" -eq 0 ]
+  # list values are space-joined in the shell envelope
+  [[ "$output" == *"secret=OPENAI_API_KEY:default ANTHROPIC_API_KEY:work"* ]]
+}
+
+# (viii) Unit 001 (#108): static coverage for the legacy compat template
+#        lib/config-defaults.sh. This file is a dead fallback (not sourced by
+#        the runtime TOML path), so assert SANDBOX_SECRET_INJECT registration
+#        statically rather than via execution.
+@test "config-defaults.sh registers SANDBOX_SECRET_INJECT in all compat slots" {
+  defaults_sh="$JAILRUN_LIB/config-defaults.sh"
+  [ -f "$defaults_sh" ]
+  # _KNOWN_KEYS / _LIST_KEYS list assignments
+  grep -Eq '^_KNOWN_KEYS=.*SANDBOX_SECRET_INJECT' "$defaults_sh"
+  grep -Eq '^_LIST_KEYS=.*SANDBOX_SECRET_INJECT' "$defaults_sh"
+  # _load_config_defaults initializer (uncommented, indented)
+  grep -Eq '^[[:space:]]+SANDBOX_SECRET_INJECT=""' "$defaults_sh"
+  # _write_default_config template comment
+  grep -Eq '^#SANDBOX_SECRET_INJECT=""' "$defaults_sh"
+}

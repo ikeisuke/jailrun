@@ -36,6 +36,7 @@ EXPECTED_MST1_TOML = (
     "sandbox_extra_allow_write = []\n"
     "sandbox_extra_allow_write_files = []\n"
     'sandbox_passthrough_env = ["AWS_REGION", "HOME"]\n'
+    "sandbox_secret_inject = []\n"
     'proxy_enabled = "False"\n'
     "proxy_allow_domains = []\n"
     'keychain_profile = "allow"\n'
@@ -97,6 +98,21 @@ class TestMigrateShellToToml(unittest.TestCase):
         self.write_legacy('SANDBOX_PASSTHROUGH_ENV=""\n')
         result = config_migrate.migrate_shell_to_toml(self.legacy_path)
         self.assertIn("sandbox_passthrough_env = []", result)
+
+    def test_mst9_secret_inject_migrates_as_list(self):
+        # Unit 001 (#108): legacy SANDBOX_SECRET_INJECT maps to the new
+        # list-type TOML key sandbox_secret_inject.
+        self.write_legacy('SANDBOX_SECRET_INJECT="OPENAI_API_KEY:default ANTHROPIC_API_KEY:work"\n')
+        result = config_migrate.migrate_shell_to_toml(self.legacy_path)
+        self.assertIn(
+            'sandbox_secret_inject = ["OPENAI_API_KEY:default", "ANTHROPIC_API_KEY:work"]',
+            result,
+        )
+
+    def test_mst10_secret_inject_empty_yields_empty_list(self):
+        self.write_legacy('SANDBOX_SECRET_INJECT=""\n')
+        result = config_migrate.migrate_shell_to_toml(self.legacy_path)
+        self.assertIn("sandbox_secret_inject = []", result)
 
     def test_mst7_empty_file_yields_defaults(self):
         self.write_legacy("")
