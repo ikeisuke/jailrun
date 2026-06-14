@@ -42,6 +42,7 @@ def migrate_shell_to_toml(shell_path: Path) -> str:
                 "SANDBOX_EXTRA_ALLOW_WRITE": "sandbox_extra_allow_write",
                 "SANDBOX_EXTRA_ALLOW_WRITE_FILES": "sandbox_extra_allow_write_files",
                 "SANDBOX_PASSTHROUGH_ENV": "sandbox_passthrough_env",
+                "SANDBOX_SECRET_INJECT": "sandbox_secret_inject",
             }
             toml_key = key_map.get(key)
             if toml_key is None:

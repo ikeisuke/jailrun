@@ -199,6 +199,35 @@ class TestCmdSet(ConfigCliTestBase):
         self.assertIn('allowed_aws_profiles = ["default"]', content)
         self.assertNotIn('"default", "default"', content)
 
+    def test_cset10_secret_inject_append(self):
+        # Unit 001 (#108): sandbox_secret_inject behaves as a list-type key.
+        self.write_fixture(
+            "[global]\n"
+            "sandbox_secret_inject = []\n"
+        )
+        config_cli.cmd_set(["--append", "sandbox_secret_inject", "OPENAI_API_KEY:default"])
+        content = self.read_config_contents()
+        self.assertIn('sandbox_secret_inject = ["OPENAI_API_KEY:default"]', content)
+
+    def test_cset11_secret_inject_remove(self):
+        self.write_fixture(
+            "[global]\n"
+            'sandbox_secret_inject = ["OPENAI_API_KEY:default", "ANTHROPIC_API_KEY:work"]\n'
+        )
+        config_cli.cmd_set(["--remove", "sandbox_secret_inject", "OPENAI_API_KEY:default"])
+        content = self.read_config_contents()
+        self.assertIn('sandbox_secret_inject = ["ANTHROPIC_API_KEY:work"]', content)
+        self.assertNotIn("OPENAI_API_KEY:default", content)
+
+    def test_cset12_secret_inject_scalar_replace_splits(self):
+        self.write_fixture(
+            "[global]\n"
+            "sandbox_secret_inject = []\n"
+        )
+        config_cli.cmd_set(["sandbox_secret_inject", "A:1 B:2"])
+        content = self.read_config_contents()
+        self.assertIn('sandbox_secret_inject = ["A:1", "B:2"]', content)
+
 
 class TestCmdEdit(ConfigCliTestBase):
     """cmd_edit — os.execvp mock, EDITOR env toggling."""
