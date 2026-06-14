@@ -85,6 +85,17 @@ HARNESS
   [[ "$output" == *"identifier not found in keychain"* ]]
 }
 
+# --- 2b: backend lookup failure -> accurate warn (distinct from "not found") ---
+@test "secret-inject reports a backend lookup failure distinctly from a missing identifier" {
+  run_si "FOO:ok" "" 'jailrun:FOO:ok) echo "ERROR: secret-tool not installed (sudo apt install libsecret-tools gnome-keyring)" >&2; return 1 ;;'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RC=0"* ]]
+  [[ "$output" != *"SET FOO="* ]]
+  [[ "$output" == *"secret store lookup failed"* ]]
+  [[ "$output" == *"secret-tool not installed"* ]]
+  [[ "$output" != *"identifier not found in keychain"* ]]
+}
+
 # --- 3-7: syntax-invalid entries -> warn + skip ---
 @test "secret-inject skips invalid entry: missing colon (FOO)" {
   run_si "FOO" "" ''

@@ -305,12 +305,31 @@ _resolve_secret_inject() {
       echo "[$_WRAPPER_NAME] WARN: overriding reserved variable via SANDBOX_SECRET_INJECT: $_si_env" >&2
     fi
 
-    # --- fetch into a temp file (|| true so a non-zero _get_token does not
-    # abort under set -e). A file is used because command substitution strips
-    # trailing newlines, which would hide a trailing-LF value and inject a
-    # silently-truncated secret. ---
+    # --- fetch into a temp file. An `if` (not `|| true`) captures the exit
+    # code without tripping set -e, so a backend failure (e.g. secret-tool
+    # missing on Linux) is told apart from a genuinely-absent identifier. A
+    # file is used because command substitution strips trailing newlines, which
+    # would hide a trailing-LF value and inject a silently-truncated secret.
+    # stderr is kept (not /dev/null) so _get_token's own diagnostic can be
+    # surfaced instead of being misreported as "identifier not found". ---
     _si_valfile="$_tmpdir/secret-inject-val"
-    _get_token "jailrun:$_si_env:$_si_id" > "$_si_valfile" 2>/dev/null || true
+    _si_errfile="$_tmpdir/secret-inject-err"
+    if _get_token "jailrun:$_si_env:$_si_id" > "$_si_valfile" 2>"$_si_errfile"; then
+      _si_rc=0
+    else
+      _si_rc=$?
+    fi
+    if [ "$_si_rc" -ne 0 ]; then
+      _si_err=$(cat "$_si_errfile")
+      rm -f "$_si_valfile" "$_si_errfile"
+      if [ -n "$_si_err" ]; then
+        echo "[$_WRAPPER_NAME] WARN: skipping $_si_env (secret store lookup failed: $_si_err)" >&2
+      else
+        echo "[$_WRAPPER_NAME] WARN: skipping $_si_env (secret store lookup failed)" >&2
+      fi
+      continue
+    fi
+    rm -f "$_si_errfile"
     if [ ! -s "$_si_valfile" ]; then
       rm -f "$_si_valfile"
       echo "[$_WRAPPER_NAME] WARN: skipping $_si_env (identifier not found in keychain)" >&2

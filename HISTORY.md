@@ -4,7 +4,7 @@
 
 これまで `GH_TOKEN` のみ特殊処理で行っていた「シークレットストア（macOS Keychain / Linux GNOME Keyring）からサンドボックスへの値注入」を一般化し、`jailrun:<環境変数名>:<identifier>` スキームで任意の環境変数を宣言的に注入できる汎用機構 `SANDBOX_SECRET_INJECT`（TOML 正本キー `sandbox_secret_inject`）を追加した 2 Unit の minor リリース。`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 等を、ホストの平文環境変数に置かず config 宣言のみで持ち込めるようになる。既存 `GH_TOKEN` 経路は後方互換を維持しつつ、secret-inject 宣言時は後勝ち上書き + git-askpass セットアップ条件をソース非依存に拡張した。
 
-PR: https://github.com/ikeisuke/jailrun/pull/<TBD>
+PR: https://github.com/ikeisuke/jailrun/pull/109
 
 ### Changes
 
@@ -13,7 +13,7 @@ PR: https://github.com/ikeisuke/jailrun/pull/<TBD>
 - **`lib/config-defaults.sh`**（Unit 001）: `sandbox_secret_inject` を list 型キーとして `_KNOWN_KEYS` / `_LIST_KEYS` に追加し、`config` サブコマンドの `--append` / `--remove` に対応。
 - **`lib/config.py`**（Unit 001）: `DEFAULTS` / `LIST_KEYS` / `KNOWN_KEYS` に `sandbox_secret_inject` を追加。`to_shell()` の `.upper()` 変換規則（`sandbox_passthrough_env` → `SANDBOX_PASSTHROUGH_ENV` と同系）により runtime export で `SANDBOX_SECRET_INJECT` となる。
 - **`lib/config_migrate.py`**（Unit 001）: 新キーをマイグレーション対象に追加。
-- **`lib/sandbox.sh`**（Unit 002）: secret-inject 注入層を追加。`SANDBOX_SECRET_INJECT` の各 `ENV:identifier` エントリを `_get_token "jailrun:<env>:<id>"` で取得し、env-spec ビルドに `SET <ENV>=<esc値>`（`_esc_env_value()` でエスケープ）として追加。エラー挙動を既存 `SANDBOX_PASSTHROUGH_ENV` バリデーションに倣って実装（未登録 identifier / 予約名衝突 / 構文不正マッピング / 改行値 = warn+skip、重複 env 宣言 = abort）。`GH_TOKEN` 特例として、secret-inject 値が取得成功した場合は既存 `_gh_token` 経路の `SET GH_TOKEN=` を抑止して後勝ちで単一の真実とし、git-askpass セットアップ条件を「GH_TOKEN が実質有効」（ソース非依存 3 分岐）へ拡張。
+- **`lib/sandbox.sh`**（Unit 002）: secret-inject 注入層を追加。`SANDBOX_SECRET_INJECT` の各 `ENV:identifier` エントリを `_get_token "jailrun:<env>:<id>"` で取得し、env-spec ビルドに `SET <ENV>=<esc値>`（`_esc_env_value()` でエスケープ）として追加。エラー挙動を既存 `SANDBOX_PASSTHROUGH_ENV` バリデーションに倣って実装（未登録 identifier / 予約名衝突 / 構文不正マッピング / 改行値 = warn+skip、重複 env 宣言 = abort）。シークレットストアのバックエンド lookup 失敗（Linux で `secret-tool` 不在等）は `_get_token` の exit code と stderr を保持して「未登録」と区別し正確に報告（PR #109 レビュー反映）。`GH_TOKEN` 特例として、secret-inject 値が取得成功した場合は既存 `_gh_token` 経路の `SET GH_TOKEN=` を抑止して後勝ちで単一の真実とし、git-askpass セットアップ条件を「GH_TOKEN が実質有効」（ソース非依存 3 分岐）へ拡張。
 
 #### Tests
 
